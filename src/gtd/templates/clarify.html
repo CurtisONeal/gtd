@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}Process inbox — GTD{% endblock %}
+{% block content %}
+
+{% if not item %}
+  <h1>Inbox zero</h1>
+  <p class="sub">Nothing left to clarify.</p>
+  <div class="actions">
+    <a href="/" class="btn primary">Capture something</a>
+    <a href="/list/next_action" class="btn">Next actions</a>
+  </div>
+
+{% else %}
+  <h1>Process inbox</h1>
+  <p class="sub">{{ remaining }} item{{ '' if remaining == 1 else 's' }} left.</p>
+
+  <div class="captured-item">{{ item.title }}</div>
+  {% if item.notes %}<p class="item-notes">{{ item.notes }}</p>{% endif %}
+
+  {# ── Step 1: actionable? ───────────────────────────────────────────── #}
+  {% if step == "actionable" %}
+    <p class="question">Is it actionable?</p>
+    <div class="actions">
+      <a class="btn primary" href="/inbox?step=multistep">Yes</a>
+      <a class="btn" href="/inbox?step=non_actionable">No</a>
+    </div>
+    <p class="step-hint">Actionable means there is something you could physically do about it.</p>
+
+  {# ── Step 1a: not actionable — where does it go? ───────────────────── #}
+  {% elif step == "non_actionable" %}
+    <p class="question">Not actionable — so what is it?</p>
+    <div class="actions">
+      <form method="post" action="/inbox/{{ item.id }}/file" class="inline-form">
+        <input type="hidden" name="state" value="reference">
+        <button type="submit">Reference — worth keeping</button>
+      </form>
+      <form method="post" action="/inbox/{{ item.id }}/file" class="inline-form">
+        <input type="hidden" name="state" value="someday">
+        <button type="submit">Someday / maybe</button>
+      </form>
+      <form method="post" action="/inbox/{{ item.id }}/file" class="inline-form">
+        <input type="hidden" name="state" value="trashed">
+        <button type="submit" class="danger">Trash it</button>
+      </form>
+    </div>
+    <p class="step-hint"><a href="/inbox">← back</a></p>
+
+  {# ── Step 2: single action or project? ─────────────────────────────── #}
+  {% elif step == "multistep" %}
+    <p class="question">Can it be done in one step?</p>
+    <div class="actions">
+      <a class="btn primary" href="/inbox?step=two_minute">Yes — single action</a>
+      <a class="btn" href="/inbox?step=project_form">No — it's a project</a>
+    </div>
+    <p class="step-hint">More than one action to reach the outcome means it's a project.
+      <a href="/inbox">← back</a></p>
+
+  {# ── Step 3: the two-minute rule ───────────────────────────────────── #}
+  {% elif step == "two_minute" %}
+    <p class="question">Will it take less than two minutes?</p>
+    <div class="actions">
+      <form method="post" action="/inbox/{{ item.id }}/complete" class="inline-form">
+        <button type="submit" class="primary">Yes — I just did it</button>
+      </form>
+      <a class="btn" href="/inbox?step=defer_form">No — do it later</a>
+      <a class="btn" href="/inbox?step=delegate_form">Someone else does it</a>
+    </div>
+    <p class="step-hint">If it's under two minutes, doing it now costs less than tracking it.
+      <a href="/inbox">← back</a></p>
+
+  {# ── Defer: becomes a next action ──────────────────────────────────── #}
+  {% elif step == "defer_form" %}
+    <p class="question">Defer it — when and where will you do it?</p>
+    <form method="post" action="/inbox/{{ item.id }}/defer" class="card">
+      <label for="title">Next action <span class="hint">— make it a physical, visible action</span></label>
+      <input type="text" id="title" name="title" value="{{ item.title }}" required>
+
+      <div class="field-row">
+        <div>
+          <label for="context_id">Context</label>
+          <select id="context_id" name="context_id">
+            <option value="">—</option>
+            {% for c in contexts %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="energy">Energy</label>
+          <select id="energy" name="energy">
+            <option value="">—</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div>
+          <label for="time_estimate_min">Minutes</label>
+          <input type="number" id="time_estimate_min" name="time_estimate_min" min="1" step="5">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div>
+          <label for="priority">Priority</label>
+          <select id="priority" name="priority">
+            <option value="">—</option>
+            <option value="1">1 — highest</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+        </div>
+        <div>
+          <label for="project_id">Project</label>
+          <select id="project_id" name="project_id">
+            <option value="">—</option>
+            {% for p in projects %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label for="area_id">Area</label>
+          <select id="area_id" name="area_id">
+            <option value="">—</option>
+            {% for a in areas %}<option value="{{ a.id }}">{{ a.emoji }} {{ a.name }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div>
+          <label for="due_date">Due date <span class="hint">— a real deadline</span></label>
+          <input type="date" id="due_date" name="due_date">
+        </div>
+        <div>
+          <label for="defer_until">Hide until <span class="hint">— tickler</span></label>
+          <input type="date" id="defer_until" name="defer_until">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="primary">Add to next actions</button>
+        <a class="btn" href="/inbox">Cancel</a>
+      </div>
+    </form>
+
+  {# ── Delegate: becomes waiting-for ─────────────────────────────────── #}
+  {% elif step == "delegate_form" %}
+    <p class="question">Delegate it — who are you waiting on?</p>
+    <form method="post" action="/inbox/{{ item.id }}/delegate" class="card">
+      <label for="title">What you're waiting for</label>
+      <input type="text" id="title" name="title" value="{{ item.title }}" required>
+
+      <div class="field-row">
+        <div>
+          <label for="waiting_on">Person</label>
+          <input type="text" id="waiting_on" name="waiting_on" placeholder="Dana" required autofocus>
+        </div>
+        <div>
+          <label for="due_date">Expected by</label>
+          <input type="date" id="due_date" name="due_date">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="primary">Add to waiting for</button>
+        <a class="btn" href="/inbox">Cancel</a>
+      </div>
+    </form>
+
+  {# ── Project: create it, keep the item as its first next action ────── #}
+  {% elif step == "project_form" %}
+    <p class="question">Make it a project</p>
+    <form method="post" action="/inbox/{{ item.id }}/project" class="card">
+      <label for="name">Project name</label>
+      <input type="text" id="name" name="name" value="{{ item.title }}" required>
+
+      <label for="outcome">Desired outcome <span class="hint">— how you'll know it's done</span></label>
+      <input type="text" id="outcome" name="outcome" placeholder="Deck is usable by summer" autofocus>
+
+      <label for="area_id">Area of focus</label>
+      <select id="area_id" name="area_id">
+        <option value="">—</option>
+        {% for a in areas %}<option value="{{ a.id }}">{{ a.emoji }} {{ a.name }}</option>{% endfor %}
+      </select>
+
+      <label for="first_action">First next action <span class="hint">— optional, but a project without one stalls</span></label>
+      <input type="text" id="first_action" name="first_action" placeholder="Price out lumber">
+
+      <div class="actions">
+        <button type="submit" class="primary">Create project</button>
+        <a class="btn" href="/inbox">Cancel</a>
+      </div>
+    </form>
+  {% endif %}
+
+  {% if step == "actionable" %}
+  <p class="step-hint">
+    <form method="post" action="/inbox/{{ item.id }}/skip" class="inline-form">
+      <button type="submit" class="linkish">Skip for now — move to the back of the inbox</button>
+    </form>
+  </p>
+  {% endif %}
+{% endif %}
+
+{% endblock %}

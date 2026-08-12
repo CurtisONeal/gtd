@@ -1,0 +1,79 @@
+"""Environment-driven configuration.
+
+Everything that differs between "running on localhost tonight" and "running
+behind TLS on a real host later" lives here, so phased deployment never needs a
+code change — only a different .env.
+"""
+
+import os
+import secrets
+from dataclasses import dataclass
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _load_dotenv(path: Path) -> None:
+    """Minimal .env loader.
+
+    Deliberately not python-dotenv — this is a dozen lines and saves a
+    dependency. Real environment variables always win over .env values.
+    """
+    if not path.exists():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+def _as_bool(value: str | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve(path_str: str) -> Path:
+    """Relative paths resolve from the project root, not the current cwd, so the
+    app finds the same database whether launched from the repo or a service."""
+    path = Path(path_str).expanduser()
+    return path if path.is_absolute() else (PROJECT_ROOT / path)
+
+
+@dataclass(frozen=True)
+class Settings:
+    db_path: Path
+    export_dir: Path
+    session_secret: str
+    secure_cookies: bool
+    session_max_age: int
+    capture_token: str | None
+
+    @property
+    def capture_api_enabled(self) -> bool:
+        return bool(self.capture_token)
+
+
+def load_settings(env_file: Path | None = None) -> Settings:
+    _load_dotenv(env_file or (PROJECT_ROOT / ".env"))
+
+    secret = os.environ.get("GTD_SESSION_SECRET", "").strip()
+    if not secret:
+        # Ephemeral fallback so tests and first-run don't explode. Sessions do
+        # not survive a restart with this, which is the intended nudge to set a
+        # real one — see .env.example.
+        secret = secrets.token_urlsafe(48)
+
+    return Settings(
+        db_path=_resolve(os.environ.get("GTD_DB_PATH", "gtd.db")),
+        export_dir=_resolve(os.environ.get("GTD_EXPORT_DIR", "exports")),
+        session_secret=secret,
+        secure_cookies=_as_bool(os.environ.get("GTD_SECURE_COOKIES"), False),
+        session_max_age=int(os.environ.get("GTD_SESSION_MAX_AGE", 60 * 60 * 24 * 30)),
+        capture_token=os.environ.get("GTD_CAPTURE_TOKEN", "").strip() or None,
+    )

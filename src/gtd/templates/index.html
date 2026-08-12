@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Capture — GTD{% endblock %}
+{% block content %}
+
+<h1>Capture</h1>
+<p class="sub">Everything on your mind. One per line — don't organize, just dump.</p>
+
+<form method="post" action="/capture" class="card">
+  <textarea name="text" placeholder="Call the dentist&#10;Research standing desks&#10;Ask Dana about the contract"
+            autofocus aria-label="Items to capture"></textarea>
+  <div class="actions">
+    <button type="submit" class="primary">Capture</button>
+    {% if counts.inbox %}<a href="/inbox" class="btn">Process inbox ({{ counts.inbox }})</a>{% endif %}
+  </div>
+</form>
+
+<ul class="counts">
+  <li><a href="/inbox"><span class="n">{{ counts.inbox }}</span><span class="k">Inbox</span></a></li>
+  <li><a href="/list/next_action"><span class="n">{{ counts.next_action }}</span><span class="k">Next actions</span></a></li>
+  <li><a href="/list/waiting_for"><span class="n">{{ counts.waiting_for }}</span><span class="k">Waiting for</span></a></li>
+  <li><a href="/list/someday"><span class="n">{{ counts.someday }}</span><span class="k">Someday</span></a></li>
+  <li><a href="/projects"><span class="n">{{ project_count }}</span><span class="k">Projects</span></a></li>
+</ul>
+
+{% if due_soon %}
+<h2>Due soon</h2>
+<div class="card">
+  {% for item in due_soon %}
+  <div class="item">
+    <div class="item-body">
+      <div class="item-title">{{ item.title }}</div>
+      <div class="meta">
+        <span class="{{ 'overdue' if item.due_date < today else '' }}">
+          due {{ item.due_date }}{% if item.due_date < today %} — overdue{% endif %}
+        </span>
+        {% if item.waiting_on %}<span>waiting on {{ item.waiting_on }}</span>{% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if stalled_projects %}
+<h2>Stalled projects</h2>
+<p class="sub">Active, but with no next action defined — the classic GTD stall.</p>
+<div class="card">
+  {% for project in stalled_projects %}
+  <div class="item">
+    <div class="item-body">
+      <div class="item-title">{{ project.name }}</div>
+      {% if project.outcome %}<div class="item-notes">{{ project.outcome }}</div>{% endif %}
+    </div>
+    <a class="btn" href="/projects#p{{ project.id }}">Add action</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

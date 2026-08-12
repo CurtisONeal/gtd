@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Sign in — GTD{% endblock %}
+{% block content %}
+<div class="login-wrap">
+  <h1>GTD</h1>
+  <p class="sub">Sign in to continue.</p>
+  <form method="post" action="/login">
+    <label for="username">Username</label>
+    <input type="text" id="username" name="username" autocomplete="username"
+           autocapitalize="none" autocorrect="off" value="{{ username or '' }}" autofocus required>
+
+    <label for="password">Password</label>
+    <input type="password" id="password" name="password" autocomplete="current-password" required>
+
+    <div class="actions">
+      <button type="submit" class="primary">Sign in</button>
+    </div>
+  </form>
+  {% if no_user %}
+  <p class="step-hint">
+    No login exists yet. Create one at the terminal:<br>
+    <code>uv run gtd set-password</code>
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

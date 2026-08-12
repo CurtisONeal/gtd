@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Projects — GTD{% endblock %}
+{% block content %}
+
+<h1>Projects</h1>
+<p class="sub">{{ projects|length }} active. A project with no next action is stalled.</p>
+
+<details class="card">
+  <summary><strong>New project</strong></summary>
+  <form method="post" action="/projects">
+    <label for="name">Project name</label>
+    <input type="text" id="name" name="name" required>
+
+    <label for="outcome">Desired outcome</label>
+    <input type="text" id="outcome" name="outcome" placeholder="How you'll know it's done">
+
+    <label for="area_id">Area of focus</label>
+    <select id="area_id" name="area_id">
+      <option value="">—</option>
+      {% for a in areas %}<option value="{{ a.id }}">{{ a.emoji }} {{ a.name }}</option>{% endfor %}
+    </select>
+
+    <div class="actions"><button type="submit" class="primary">Create project</button></div>
+  </form>
+</details>
+
+{% if not projects %}
+  <p class="empty">No active projects.</p>
+{% endif %}
+
+{% for project in projects %}
+<div class="card" id="p{{ project.id }}">
+  <h2 style="margin-top:0">
+    {{ project.name }}
+    {% if project.area_name %}<span class="meta">{{ project.area_emoji }} {{ project.area_name }}</span>{% endif %}
+  </h2>
+  {% if project.outcome %}<p class="sub" style="margin-bottom:0.5rem">{{ project.outcome }}</p>{% endif %}
+
+  {% if project.open_actions == 0 %}
+    <p class="meta"><span class="overdue">⚠ Stalled — no next action</span></p>
+  {% endif %}
+
+  {% set actions = actions_by_project.get(project.id, []) %}
+  {% for item in actions %}
+  <div class="item">
+    <form method="post" action="/items/{{ item.id }}/complete" class="inline-form">
+      <input type="hidden" name="back" value="/projects">
+      <button type="submit" title="Mark complete">✓</button>
+    </form>
+    <div class="item-body">
+      <div class="item-title">{{ item.title }}</div>
+      <div class="meta">
+        {% if item.context_name %}<span>{{ item.context_name }}</span>{% endif %}
+        {% if item.due_date %}
+          <span class="{{ 'overdue' if item.due_date < today else '' }}">due {{ item.due_date }}</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  <form method="post" action="/projects/{{ project.id }}/actions" class="field-row" style="margin-top:0.75rem">
+    <div style="flex:3 1 14rem">
+      <input type="text" name="title" placeholder="Add a next action…" required
+             aria-label="New action for {{ project.name }}">
+    </div>
+    <div style="flex:1 1 8rem">
+      <select name="context_id" aria-label="Context">
+        <option value="">Context —</option>
+        {% for c in contexts %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div style="flex:0 0 auto"><button type="submit">Add</button></div>
+  </form>
+
+  <div class="actions">
+    <form method="post" action="/projects/{{ project.id }}/complete" class="inline-form">
+      <button type="submit" class="linkish">Mark project done</button>
+    </form>
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}

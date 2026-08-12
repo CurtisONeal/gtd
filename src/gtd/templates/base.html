@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>{% block title %}GTD{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+{% if user %}
+<nav>
+  <a href="/" class="brand">GTD</a>
+  <a href="/inbox" {% if counts and counts.inbox %}class="has-count"{% endif %}>
+    Inbox{% if counts and counts.inbox %} <span class="badge">{{ counts.inbox }}</span>{% endif %}
+  </a>
+  <a href="/list/next_action">Next{% if counts %} <span class="badge quiet">{{ counts.next_action }}</span>{% endif %}</a>
+  <a href="/list/waiting_for">Waiting{% if counts and counts.waiting_for %} <span class="badge quiet">{{ counts.waiting_for }}</span>{% endif %}</a>
+  <a href="/list/someday">Someday</a>
+  <a href="/list/reference">Reference</a>
+  <a href="/projects">Projects</a>
+  <form method="post" action="/logout" class="inline-form">
+    <button type="submit" class="linkish">Sign out</button>
+  </form>
+</nav>
+{% endif %}
+
+<main>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if notice %}<p class="notice">{{ notice }}</p>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

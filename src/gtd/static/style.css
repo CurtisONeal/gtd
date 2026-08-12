@@ -1,0 +1,208 @@
+/* Plain, functional, and easy to restyle. Light and dark both handled via
+   color-scheme + custom properties. No framework, no build step. */
+
+:root {
+  --bg: #fbfbfa;
+  --surface: #ffffff;
+  --border: #e2e0dc;
+  --text: #1f1e1c;
+  --muted: #6b6862;
+  --accent: #2f6f4e;
+  --accent-text: #ffffff;
+  --danger: #a13a2c;
+  --warn: #8a6d1f;
+  --radius: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181a;
+    --surface: #1e2124;
+    --border: #33383d;
+    --text: #e8e6e3;
+    --muted: #9a9791;
+    --accent: #6db38a;
+    --accent-text: #10221a;
+    --danger: #e08374;
+    --warn: #d8b45c;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ── Nav ─────────────────────────────────────────────────────────────────── */
+
+nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 1rem;
+  padding: 0.75rem 1rem;
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 0.35rem 0;
+  white-space: nowrap;
+}
+nav a:hover { color: var(--text); }
+nav a.brand { font-weight: 700; color: var(--text); margin-right: 0.5rem; }
+nav a.has-count { color: var(--text); font-weight: 600; }
+nav .inline-form { margin-left: auto; }
+
+.badge {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 0 0.4em;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-align: center;
+}
+.badge.quiet { background: var(--border); color: var(--muted); }
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+
+main {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 4rem;
+  padding-bottom: max(4rem, env(safe-area-inset-bottom));
+}
+
+h1 { font-size: 1.5rem; margin: 0 0 0.25rem; }
+h2 { font-size: 1.1rem; margin: 1.75rem 0 0.5rem; }
+.sub { color: var(--muted); margin: 0 0 1.25rem; font-size: 0.92rem; }
+
+/* ── Forms ───────────────────────────────────────────────────────────────── */
+
+textarea, input[type=text], input[type=password], input[type=date],
+input[type=number], select {
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+textarea { min-height: 6.5rem; resize: vertical; }
+input:focus, textarea:focus, select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+label { display: block; margin: 0.85rem 0 0.25rem; font-weight: 600; font-size: 0.9rem; }
+label .hint { font-weight: 400; color: var(--muted); }
+
+.field-row { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.field-row > div { flex: 1 1 8rem; min-width: 8rem; }
+
+button, .btn {
+  display: inline-block;
+  padding: 0.55rem 0.95rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+}
+button:hover, .btn:hover { border-color: var(--muted); }
+button.primary, .btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+button.danger, .btn.danger { color: var(--danger); }
+button.linkish {
+  border: none;
+  background: none;
+  color: var(--muted);
+  padding: 0.35rem 0;
+}
+button.linkish:hover { color: var(--text); text-decoration: underline; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+.inline-form { display: inline; margin: 0; }
+
+/* ── Cards & lists ───────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.item:last-child { border-bottom: none; }
+.item-body { flex: 1; min-width: 0; }
+.item-title { overflow-wrap: anywhere; }
+.item-notes { color: var(--muted); font-size: 0.88rem; white-space: pre-wrap; margin-top: 0.2rem; }
+
+.meta { color: var(--muted); font-size: 0.82rem; margin-top: 0.25rem; }
+.meta span:not(:last-child)::after { content: " · "; }
+.meta .overdue { color: var(--danger); font-weight: 600; }
+.meta .deferred { color: var(--warn); }
+
+.counts { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+.counts a {
+  display: block;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-decoration: none;
+  color: var(--text);
+  min-width: 6.5rem;
+}
+.counts .n { display: block; font-size: 1.35rem; font-weight: 700; }
+.counts .k { color: var(--muted); font-size: 0.82rem; }
+
+.empty { color: var(--muted); padding: 1.5rem 0; text-align: center; }
+.error  { background: #fdecea; color: #7d2b20; padding: 0.7rem 0.9rem; border-radius: var(--radius); }
+.notice { background: #eaf5ee; color: #235c3e; padding: 0.7rem 0.9rem; border-radius: var(--radius); }
+@media (prefers-color-scheme: dark) {
+  .error  { background: #3a201c; color: #f0b3a8; }
+  .notice { background: #1c3327; color: #a8dcc0; }
+}
+
+/* The clarify question — the focal point of inbox processing. */
+.question { font-size: 1.15rem; font-weight: 600; margin: 0.25rem 0 0.75rem; }
+.captured-item {
+  font-size: 1.2rem;
+  padding: 0.9rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  overflow-wrap: anywhere;
+}
+.step-hint { color: var(--muted); font-size: 0.85rem; margin-top: 1.25rem; }
+
+.login-wrap { max-width: 22rem; margin: 4rem auto; }

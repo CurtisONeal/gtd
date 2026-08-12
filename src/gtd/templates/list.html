@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}{{ label }} — GTD{% endblock %}
+{% block content %}
+
+<h1>{{ label }}</h1>
+<p class="sub">
+  {{ items|length }} item{{ '' if items|length == 1 else 's' }}
+  {%- if state == "next_action" and hidden_deferred %},
+    {{ hidden_deferred }} hidden until their defer date
+    (<a href="?deferred=1">show</a>)
+  {%- endif %}
+</p>
+
+{% if state == "next_action" and (contexts or areas) %}
+<form method="get" class="card">
+  <div class="field-row">
+    <div>
+      <label for="context_id">Context</label>
+      <select id="context_id" name="context_id" onchange="this.form.submit()">
+        <option value="">Any</option>
+        {% for c in contexts %}
+        <option value="{{ c.id }}" {% if selected_context == c.id %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="area_id">Area</label>
+      <select id="area_id" name="area_id" onchange="this.form.submit()">
+        <option value="">Any</option>
+        {% for a in areas %}
+        <option value="{{ a.id }}" {% if selected_area == a.id %}selected{% endif %}>{{ a.emoji }} {{ a.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label>&nbsp;</label>
+      <noscript><button type="submit">Filter</button></noscript>
+      {% if selected_context or selected_area %}
+        <a class="btn" href="/list/{{ state }}">Clear</a>
+      {% endif %}
+    </div>
+  </div>
+</form>
+{% endif %}
+
+{% if not items %}
+  <p class="empty">Nothing here.</p>
+{% else %}
+<div class="card">
+  {% for item in items %}
+  <div class="item">
+    {% if state in ("next_action", "waiting_for") %}
+    <form method="post" action="/items/{{ item.id }}/complete" class="inline-form">
+      <input type="hidden" name="back" value="{{ back }}">
+      <button type="submit" title="Mark complete">✓</button>
+    </form>
+    {% endif %}
+
+    <div class="item-body">
+      <div class="item-title">{{ item.title }}</div>
+      {% if item.notes %}<div class="item-notes">{{ item.notes }}</div>{% endif %}
+      <div class="meta">
+        {% if item.context_name %}<span>{{ item.context_name }}</span>{% endif %}
+        {% if item.project_name %}<span>↳ {{ item.project_name }}</span>{% endif %}
+        {% if item.area_name %}<span>{{ item.area_emoji }} {{ item.area_name }}</span>{% endif %}
+        {% if item.waiting_on %}<span>waiting on {{ item.waiting_on }}</span>{% endif %}
+        {% if item.energy %}<span>energy: {{ item.energy }}</span>{% endif %}
+        {% if item.time_estimate_min %}<span>{{ item.time_estimate_min }}m</span>{% endif %}
+        {% if item.priority %}<span>P{{ item.priority }}</span>{% endif %}
+        {% if item.due_date %}
+          <span class="{{ 'overdue' if item.due_date < today else '' }}">due {{ item.due_date }}</span>
+        {% endif %}
+        {% if item.defer_until and item.defer_until > today %}
+          <span class="deferred">hidden until {{ item.defer_until }}</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <form method="post" action="/items/{{ item.id }}/delete" class="inline-form">
+      <input type="hidden" name="back" value="{{ back }}">
+      <button type="submit" class="linkish" title="Move to trash">✕</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}
