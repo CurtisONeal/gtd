@@ -346,6 +346,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             back=str(request.url.path),
         )
 
+    @app.post("/list/{state}/add")
+    def list_add(
+        state: str,
+        title: str = Form(...),
+        notes: str = Form(""),
+        waiting_on: str = Form(""),
+        context_id: str = Form(""),
+        due_date: str = Form(""),
+    ):
+        """Add straight to a list, skipping capture-then-clarify.
+
+        Capture-first is the discipline, but when you already know something is
+        a waiting-for or a reference note, routing it through the inbox is
+        friction with no payoff — and if the inbox is empty there was
+        previously no way into these lists at all.
+        """
+        addable = {
+            ItemState.NEXT_ACTION,
+            ItemState.WAITING_FOR,
+            ItemState.SOMEDAY,
+            ItemState.REFERENCE,
+        }
+        if state not in {str(s) for s in addable}:
+            return RedirectResponse("/", status_code=303)
+
+        item_id = store.capture(title, notes=notes, source=Source.WEB)
+        store.set_state(
+            item_id,
+            state,
+            waiting_on=_str_or_none(waiting_on),
+            context_id=_int_or_none(context_id),
+            due_date=_str_or_none(due_date),
+        )
+        return RedirectResponse(f"/list/{state}", status_code=303)
+
     @app.post("/items/{item_id}/complete")
     def item_complete(item_id: int, back: str = Form("/list/next_action")):
         store.complete(item_id)

@@ -33,10 +33,20 @@ personal data in a third-party spreadsheet with no real auth.
 6. **Never set or store a user's password in code, config, or a commit.** Only
    `gtd set-password` creates one, interactively.
 
+7. **Work deployments are local-only, permanently.** `127.0.0.1`, no Tailscale,
+   no tunnel, no reverse proxy, no inbound exposure. This is the deployment mode
+   for work instances, not a default to relax later. Do not add features that
+   assume a work instance is reachable from elsewhere, and do not build bridges
+   between a work instance and a personal one. See ADR-008.
+
 ## Design principles
 
 - **Capture must be frictionless.** `capture()` takes a title and nothing else.
   Metadata is a *clarify*-time concern. Do not add required fields to capture.
+- **Capture-then-clarify is primary, but not the only route.** Next Actions,
+  Waiting For, Someday and Reference each have a direct-add form for when the
+  destination is already known; the edit page can move anything anywhere. Done
+  and Trash are outcomes and take no direct add. See ADR-009.
 - **Every list is a `state` of `items`.** Adding a list means adding an enum
   value, not a table. See ADR-001.
 - **Soft delete by default.** `delete_item()` sets `trashed`; hard delete is

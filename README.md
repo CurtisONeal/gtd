@@ -65,6 +65,12 @@ Is it actionable?
 Items are processed oldest-first so nothing rots at the bottom. "Skip for now"
 sends one to the back of the queue rather than letting you cherry-pick forever.
 
+**Two other ways in.** Capture-then-clarify is the discipline, but it isn't the
+only route: each of Next Actions, Waiting For, Someday and Reference has an
+"Add directly to…" form for when you already know where something belongs, and
+the edit page can move any item to any list. Done and Trash have no add form —
+they are outcomes, not destinations.
+
 ## CLI
 
 ```bash
@@ -192,6 +198,21 @@ Keep `GTD_SECURE_COOKIES=false` on this phase. Tailscale encrypts at the
 WireGuard layer, but the connection is still plain `http` from the browser's
 point of view — setting the Secure flag would stop the cookie being sent at all
 and lock you out.
+
+### Work machines — local only, always
+
+**A work deployment gets none of this.** No Tailscale, no remote access, no
+inbound network exposure of any kind, ever. It runs on `127.0.0.1` on that
+machine and is reachable only from that machine.
+
+This is not a default to be relaxed later — it is the deployment mode for work
+instances. Keep `--host 127.0.0.1`, do not install Tailscale, and do not put a
+tunnel or reverse proxy in front of it. A work instance's data stays on the work
+machine and never traverses a personal network.
+
+Practically: clone the repo, `uv run gtd init-db`, `uv run gtd set-password`, run
+it on localhost. Separate `.env`, separate `GTD_DB_PATH`, no shared state with
+any personal instance.
 
 ### Phase 3 — TLS (optional)
 

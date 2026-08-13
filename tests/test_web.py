@@ -492,3 +492,70 @@ def test_time_estimate_options_are_sane(auth_client):
     for minutes, label in TIME_ESTIMATES:
         assert f'value="{minutes}"' in page and label in page
     assert [m for m, _ in TIME_ESTIMATES] == sorted(m for m, _ in TIME_ESTIMATES)
+
+
+# ── Direct-add to a list (inbox-bypass) ──────────────────────────────────────
+
+@pytest.mark.parametrize(
+    "state", ["next_action", "waiting_for", "someday", "reference"]
+)
+def test_direct_add_reaches_every_addable_list(auth_client, state):
+    """Before this existed, waiting_for/someday/reference were only reachable by
+    processing an inbox item — impossible at inbox zero."""
+    store = store_of(auth_client)
+    resp = auth_client.post(
+        f"/list/{state}/add", data={"title": f"direct into {state}"}, follow_redirects=False
+    )
+    assert resp.status_code == 303 and resp.headers["location"] == f"/list/{state}"
+
+    items = store.list_items(state)
+    assert [i["title"] for i in items] == [f"direct into {state}"]
+    assert store.counts_by_state()[ItemState.INBOX] == 0     # never touched the inbox
+
+
+def test_direct_add_waiting_for_captures_the_person(auth_client):
+    store = store_of(auth_client)
+    auth_client.post(
+        "/list/waiting_for/add",
+        data={"title": "the signed lease", "waiting_on": "Dana", "due_date": "2026-09-01"},
+    )
+    item = store.list_items(ItemState.WAITING_FOR)[0]
+    assert item["waiting_on"] == "Dana"
+    assert item["due_date"] == "2026-09-01"
+
+
+def test_direct_add_next_action_takes_a_context(auth_client):
+    store = store_of(auth_client)
+    context_id = store.list_contexts()[0]["id"]
+    auth_client.post(
+        "/list/next_action/add",
+        data={"title": "call the bank", "context_id": str(context_id)},
+    )
+    assert store.list_items(ItemState.NEXT_ACTION)[0]["context_id"] == context_id
+
+
+def test_direct_add_reference_keeps_notes(auth_client):
+    store = store_of(auth_client)
+    auth_client.post(
+        "/list/reference/add",
+        data={"title": "wifi password", "notes": "in the drawer"},
+    )
+    assert store.list_items(ItemState.REFERENCE)[0]["notes"] == "in the drawer"
+
+
+@pytest.mark.parametrize("state", ["done", "trashed", "inbox", "nonsense"])
+def test_direct_add_refused_for_non_addable_states(auth_client, state):
+    """done/trashed are outcomes, and inbox already has the capture box."""
+    store = store_of(auth_client)
+    resp = auth_client.post(
+        f"/list/{state}/add", data={"title": "nope"}, follow_redirects=False
+    )
+    assert resp.headers["location"] == "/"
+    assert sum(store.counts_by_state().values()) == 0
+
+
+def test_add_form_appears_on_the_lists_that_need_it(auth_client):
+    for state in ("next_action", "waiting_for", "someday", "reference"):
+        assert "Add directly to" in auth_client.get(f"/list/{state}").text
+    for state in ("done", "trashed"):
+        assert "Add directly to" not in auth_client.get(f"/list/{state}").text

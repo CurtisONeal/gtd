@@ -11,6 +11,56 @@
   {%- endif %}
 </p>
 
+{% if state in ("next_action", "waiting_for", "someday", "reference") %}
+<details class="card">
+  <summary><strong>Add directly to {{ label }}</strong></summary>
+  <p class="sub" style="margin:0.5rem 0 0">
+    Normally things arrive here by processing the inbox. Use this when you
+    already know where it belongs.
+  </p>
+  <form method="post" action="/list/{{ state }}/add">
+    <label for="add_title">
+      {% if state == "waiting_for" %}What you're waiting for
+      {% elif state == "reference" %}What to keep
+      {% else %}Title{% endif %}
+    </label>
+    <input type="text" id="add_title" name="title" required>
+
+    <div class="field-row">
+      {% if state == "waiting_for" %}
+      <div>
+        <label for="add_waiting_on">Waiting on</label>
+        <input type="text" id="add_waiting_on" name="waiting_on" placeholder="Dana">
+      </div>
+      <div>
+        <label for="add_due">Expected by</label>
+        <input type="date" id="add_due" name="due_date">
+      </div>
+      {% elif state == "next_action" %}
+      <div>
+        <label for="add_context">Context</label>
+        <select id="add_context" name="context_id">
+          <option value="">—</option>
+          {% for c in contexts %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="add_due">Due date</label>
+        <input type="date" id="add_due" name="due_date">
+      </div>
+      {% else %}
+      <div>
+        <label for="add_notes">Notes <span class="hint">— optional</span></label>
+        <input type="text" id="add_notes" name="notes">
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="actions"><button type="submit" class="primary">Add</button></div>
+  </form>
+</details>
+{% endif %}
+
 {% if state == "next_action" and (contexts or areas) %}
 <form method="get" class="card">
   <div class="field-row">

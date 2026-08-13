@@ -165,3 +165,59 @@ devices; nothing is published to the internet.
   WireGuard layer, but the browser still sees plain `http`, so setting the
   Secure flag would stop the cookie being sent and lock the user out. It gets
   enabled only alongside real TLS (Phase 3).
+
+---
+
+## ADR-008: Work instances are local-only, permanently
+
+**Status:** Accepted
+
+**Context.** ADR-007 chose Tailscale so a personal instance is reachable from a
+phone. That reasoning does not transfer to a deployment on a work machine.
+Joining a work machine to a personal tailnet would bridge two networks that
+should stay separate, and would make work data reachable from personal devices.
+
+**Decision.** A work instance is local-only, permanently. `--host 127.0.0.1`,
+no Tailscale, no tunnel, no reverse proxy, no inbound exposure of any kind. It
+is reachable only from the machine it runs on.
+
+This is not a conservative default to be relaxed once it's "set up properly" —
+it is the deployment mode. Personal and work instances share no database, no
+`.env`, no network path, and no data.
+
+**Consequences.**
+- Remote access, offline sync and cross-device use are simply not available for
+  work instances. Accepted deliberately, not a limitation to be engineered
+  around later.
+- The code needs no change to support this: `GTD_DB_PATH` is already
+  configurable and `--host` is a launch argument. Isolation is a deployment
+  choice the design already permits.
+- Anything wanting to bridge the two — shared capture, a combined view — is out
+  of scope by decision, not by omission.
+
+---
+
+## ADR-009: Lists are directly addable, not clarify-only
+
+**Status:** Accepted (supersedes clarify-only entry in ADR-001's flow)
+
+**Context.** Waiting For, Someday/Maybe and Reference could only be reached by
+processing an inbox item through the clarify tree, or by editing an existing
+item and changing its list. Neither is discoverable from those pages, and at
+inbox zero there was no way into them at all. Reported after real use: "these
+appear to have no way for items to be categorized this way."
+
+**Decision.** Each of Next Actions, Waiting For, Someday and Reference gets an
+"Add directly to…" form on its own page, with the fields that list actually
+needs (`waiting_on` for Waiting For, notes for Reference, context for Next
+Actions). Done and Trash get none — they are outcomes, not destinations.
+
+**Consequences.**
+- Capture-then-clarify remains the primary path and the recommended discipline;
+  the direct form is framed on the page as the exception ("use this when you
+  already know where it belongs").
+- Trades a little GTD orthodoxy for the tool being usable. Forcing "I'm waiting
+  on Dana for the lease" through capture and a four-question decision tree is
+  friction with no methodological payoff.
+- Direct-added items skip the inbox entirely — verified by test, since silently
+  incrementing the inbox count would undermine inbox-zero as a signal.
