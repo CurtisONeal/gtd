@@ -89,13 +89,13 @@ without it needing to speak SQLite.
 src/gtd/
 ├── config.py    env-driven settings — nothing hardcoded to localhost
 ├── db.py        connection + schema (plain sqlite3, WAL, no ORM)
-├── models.py    ItemState / Energy / ProjectStatus / Source enums
+├── models.py    ItemState / Energy / ProjectStatus / Source, TIME_ESTIMATES
 ├── store.py     repository layer — ALL SQL lives here
 ├── auth.py      argon2id hashing, session helpers, login rate limiter
 ├── export.py    markdown export
 ├── cli.py       command line entry point
 ├── web.py       FastAPI app and routes
-├── templates/   Jinja2 — base, login, index, clarify, list, projects
+├── templates/   Jinja2 — base, login, index, clarify, list, edit, projects
 └── static/      style.css (that's the entire frontend)
 ```
 
@@ -108,18 +108,99 @@ option rather than a rewrite.
 uv run pytest -q
 ```
 
-81 tests covering the store, state transitions, the tickler, auth, rate
-limiting, markdown export, and every web route including the full clarify tree.
-Each test gets its own temp SQLite file — no mocks, no shared state.
+94 tests covering the store, state transitions, the tickler, auth, rate
+limiting, markdown export, editing and undo, and every web route including the
+full clarify tree. Each test gets its own temp SQLite file — no mocks, no
+shared state.
 
-## Deployment phases
+## Running it as a service
 
-1. **Local** (now) — localhost only, plain http, `GTD_SECURE_COOKIES=false`
-2. **Tailscale** — reachable from phone/iPad without exposing anything publicly
-3. **TLS** (optional) — nginx or Caddy in front; set `GTD_SECURE_COOKIES=true`
+`uv run uvicorn ...` in a terminal dies when that terminal closes. To keep it up
+across logout and reboot, run it under a supervisor.
 
-Nothing in the code assumes localhost, so moving between phases is a `.env`
-change.
+**macOS (launchd).** Create `~/Library/LaunchAgents/local.gtd.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>local.gtd</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/ABSOLUTE/PATH/TO/gtd/.venv/bin/uvicorn</string>
+        <string>gtd.web:app</string>
+        <string>--host</string><string>127.0.0.1</string>
+        <string>--port</string><string>8765</string>
+    </array>
+    <key>WorkingDirectory</key><string>/ABSOLUTE/PATH/TO/gtd</string>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>StandardOutPath</key><string>/tmp/gtd.log</string>
+    <key>StandardErrorPath</key><string>/tmp/gtd.error.log</string>
+</dict>
+</plist>
+```
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.gtd.plist
+launchctl list local.gtd          # confirm: PID set, LastExitStatus 0
+
+# stop / restart
+launchctl bootout   gui/$(id -u) ~/Library/LaunchAgents/local.gtd.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.gtd.plist
+```
+
+**Linux (systemd user unit)** is the same shape: `ExecStart` pointing at
+`.venv/bin/uvicorn`, `WorkingDirectory` at the repo, `Restart=always`.
+
+**Note:** launchd does not re-read a changed plist automatically, and `uvicorn`
+without `--reload` does not pick up code changes. After editing either, bootout
+and bootstrap again.
+
+## Remote access
+
+### Phase 1 — local only (default)
+
+`--host 127.0.0.1`, plain http, `GTD_SECURE_COOKIES=false`. Nothing outside the
+machine can reach it.
+
+### Phase 2 — Tailscale (recommended)
+
+A private WireGuard network between your own devices. Nothing is exposed to the
+public internet, and traffic is encrypted at the network layer.
+
+```bash
+brew install tailscale                  # macOS
+sudo brew services start tailscale      # starts the daemon (needs sudo)
+tailscale up                            # prints an auth URL — sign in
+tailscale ip -4                         # your machine's 100.x.y.z address
+```
+
+Install Tailscale on your phone/iPad and sign in with the **same account**, then
+browse to `http://<100.x.y.z>:8765`.
+
+The server must listen on an interface Tailscale can reach — `127.0.0.1` is not
+one. Two options in the plist:
+
+| `--host` | Reachable from | Trade-off |
+|---|---|---|
+| `0.0.0.0` | Tailscale **and** local LAN | Simplest. Anyone on your LAN can reach the login page. |
+| `100.x.y.z` | Tailscale only | Tighter. Breaks if the tailnet address ever changes. |
+
+Keep `GTD_SECURE_COOKIES=false` on this phase. Tailscale encrypts at the
+WireGuard layer, but the connection is still plain `http` from the browser's
+point of view — setting the Secure flag would stop the cookie being sent at all
+and lock you out.
+
+### Phase 3 — TLS (optional)
+
+Either `tailscale serve` (gives a real cert on a `*.ts.net` name, no ports or
+reverse proxy to manage), or nginx/Caddy in front. **Then**, and only then, set
+`GTD_SECURE_COOKIES=true`.
+
+Nothing in the code assumes localhost, so moving between phases is a `.env` and
+a `--host` change.
 
 ## Capture from elsewhere
 
@@ -127,6 +208,14 @@ change.
 with a `Authorization: Bearer <GTD_CAPTURE_TOKEN>` header. Disabled unless
 `GTD_CAPTURE_TOKEN` is set. Intended for a Discord bot, an email poller, or a
 phone shortcut — so capture never depends on opening the web UI.
+
+## Project docs
+
+| File | What's in it |
+|---|---|
+| `ADR.md` | Architecture decisions and why — read before changing the data model |
+| `AGENTS.md` | Operating rules and known gotchas, aimed at AI coding agents |
+| `HUMAN_PLANS.md` | Scratchpad for ideas, open questions, and what's next |
 
 ## Security notes
 
