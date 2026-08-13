@@ -61,6 +61,8 @@ nav a:hover { color: var(--text); }
 nav a.brand { font-weight: 700; color: var(--text); margin-right: 0.5rem; }
 nav a.has-count { color: var(--text); font-weight: 600; }
 nav .inline-form { margin-left: auto; }
+/* Done/Trash are recovery surfaces, not daily destinations — de-emphasized. */
+nav a.quiet-link { font-size: 0.88rem; opacity: 0.75; }
 
 .badge {
   display: inline-block;

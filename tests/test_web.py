@@ -350,3 +350,145 @@ def test_export_writes_files(auth_client, settings):
     auth_client.post("/export")
     assert (settings.export_dir / "inbox.md").exists()
     assert "something to export" in (settings.export_dir / "inbox.md").read_text()
+
+
+# ── Edit & undo (added after live use surfaced the gap) ──────────────────────
+
+def test_edit_form_renders_with_current_values(auth_client):
+    store = store_of(auth_client)
+    item_id = store.capture("Mispelled titel")
+    store.set_state(item_id, ItemState.NEXT_ACTION)
+
+    page = auth_client.get(f"/items/{item_id}/edit").text
+    assert "Mispelled titel" in page
+    assert "Edit" in page
+
+
+def test_edit_fixes_a_typo(auth_client):
+    store = store_of(auth_client)
+    item_id = store.capture("Call the dentst")
+    store.set_state(item_id, ItemState.NEXT_ACTION)
+
+    auth_client.post(
+        f"/items/{item_id}/edit",
+        data={"title": "Call the dentist", "notes": "", "state": "next_action",
+              "back": "/list/next_action"},
+    )
+    assert store.get_item(item_id)["title"] == "Call the dentist"
+
+
+def test_edit_with_blank_notes_does_not_violate_not_null(auth_client):
+    """Empty optional text must stay '' on NOT NULL columns, not become NULL."""
+    store = store_of(auth_client)
+    item_id = store.capture("thing")
+    resp = auth_client.post(
+        f"/items/{item_id}/edit",
+        data={"title": "thing", "notes": "", "state": "inbox", "back": "/"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert store.get_item(item_id)["notes"] == ""
+
+
+def test_edit_can_move_an_item_between_lists(auth_client):
+    store = store_of(auth_client)
+    item_id = store.capture("maybe later")
+    store.set_state(item_id, ItemState.NEXT_ACTION)
+
+    auth_client.post(
+        f"/items/{item_id}/edit",
+        data={"title": "maybe later", "notes": "", "state": "someday", "back": "/"},
+    )
+    assert store.get_item(item_id)["state"] == ItemState.SOMEDAY
+
+
+def test_edit_clears_optional_fields_back_to_null(auth_client):
+    store = store_of(auth_client)
+    item_id = store.capture("x")
+    store.set_state(item_id, ItemState.NEXT_ACTION, due_date="2026-01-01", priority=1)
+
+    auth_client.post(
+        f"/items/{item_id}/edit",
+        data={"title": "x", "notes": "", "state": "next_action",
+              "due_date": "", "priority": "", "back": "/"},
+    )
+    item = store.get_item(item_id)
+    assert item["due_date"] is None and item["priority"] is None
+
+
+def test_edit_rejects_a_blank_title(store):
+    item_id = store.capture("has a title")
+    with pytest.raises(ValueError, match="title cannot be empty"):
+        store.update_item(item_id, title="   ")
+
+
+def test_undo_a_completion(auth_client):
+    store = store_of(auth_client)
+    item_id = store.capture("done too soon")
+    store.set_state(item_id, ItemState.NEXT_ACTION)
+    store.complete(item_id)
+
+    auth_client.post(f"/items/{item_id}/restore", data={"back": "/list/done"})
+    item = store.get_item(item_id)
+    assert item["state"] == ItemState.NEXT_ACTION
+    assert item["completed_at"] is None
+
+
+def test_undo_a_delete(auth_client):
+    store = store_of(auth_client)
+    item_id = store.capture("deleted by mistake")
+    store.delete_item(item_id)
+    assert store.get_item(item_id)["state"] == ItemState.TRASHED
+
+    auth_client.post(f"/items/{item_id}/restore", data={"back": "/list/trashed"})
+    assert store.get_item(item_id)["state"] == ItemState.NEXT_ACTION
+
+
+def test_restore_can_target_a_specific_list(auth_client):
+    store = store_of(auth_client)
+    item_id = store.capture("reference material")
+    store.set_state(item_id, ItemState.REFERENCE)
+    store.delete_item(item_id)
+
+    auth_client.post(
+        f"/items/{item_id}/restore", data={"back": "/list/trashed", "state": "reference"}
+    )
+    assert store.get_item(item_id)["state"] == ItemState.REFERENCE
+
+
+def test_restore_ignores_a_bogus_target_state(auth_client):
+    store = store_of(auth_client)
+    item_id = store.capture("x")
+    store.delete_item(item_id)
+    auth_client.post(f"/items/{item_id}/restore", data={"state": "nonsense", "back": "/"})
+    assert store.get_item(item_id)["state"] == ItemState.NEXT_ACTION
+
+
+def test_done_and_trash_pages_render(auth_client):
+    store = store_of(auth_client)
+    done_id = store.capture("finished")
+    store.complete(done_id)
+    trashed_id = store.capture("binned")
+    store.delete_item(trashed_id)
+
+    assert "finished" in auth_client.get("/list/done").text
+    assert "binned" in auth_client.get("/list/trashed").text
+
+
+def test_edit_form_for_a_missing_item_redirects(auth_client):
+    resp = auth_client.get("/items/99999/edit", follow_redirects=False)
+    assert resp.status_code == 303
+
+
+def test_time_estimate_options_are_sane(auth_client):
+    """Regression: min=1 step=5 on a number input produced 1, 6, 11, 16..."""
+    from gtd.models import TIME_ESTIMATES
+
+    store = store_of(auth_client)
+    store.capture("something")
+    page = auth_client.get("/inbox?step=defer_form").text
+
+    assert 'type="number"' not in page          # no stepper at all any more
+    for minutes, label in TIME_ESTIMATES:
+        assert f'value="{minutes}"' in page and label in page
+    assert [m for m, _ in TIME_ESTIMATES] == sorted(m for m, _ in TIME_ESTIMATES)

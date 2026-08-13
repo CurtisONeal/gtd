@@ -21,7 +21,7 @@ from .auth import SESSION_USER_KEY, LoginRateLimiter, verify_password
 from .config import Settings, load_settings
 from .db import Database
 from .export import export_all
-from .models import STATE_LABELS, ItemState, Source
+from .models import STATE_LABELS, TIME_ESTIMATES, ItemState, Source
 from .store import Store
 
 HERE = Path(__file__).resolve().parent
@@ -215,6 +215,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             contexts=store.list_contexts(),
             areas=store.list_areas(),
             projects=store.list_projects(),
+            time_estimates=TIME_ESTIMATES,
         )
 
     @app.post("/inbox/{item_id}/file")
@@ -353,6 +354,74 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/items/{item_id}/delete")
     def item_delete(item_id: int, back: str = Form("/list/next_action")):
         store.delete_item(item_id)
+        return RedirectResponse(_safe_back(back, "/list/next_action"), status_code=303)
+
+    @app.post("/items/{item_id}/restore")
+    def item_restore(item_id: int, back: str = Form("/list/next_action"), state: str = Form("")):
+        """Undo a completion or a delete.
+
+        Defaults to next_action rather than guessing the previous list — the
+        edit page can move it anywhere afterwards. Reference/someday items that
+        were trashed keep their nature better if the caller passes `state`.
+        """
+        target = state if state in {str(s) for s in ItemState.user_lists()} else str(
+            ItemState.NEXT_ACTION
+        )
+        store.uncomplete(item_id, state=target)
+        return RedirectResponse(_safe_back(back, "/list/next_action"), status_code=303)
+
+    @app.get("/items/{item_id}/edit", response_class=HTMLResponse)
+    def item_edit_form(request: Request, item_id: int, back: str = "/list/next_action"):
+        item = store.get_item(item_id)
+        if item is None:
+            return RedirectResponse("/", status_code=303)
+        return render(
+            request,
+            "edit.html",
+            item=item,
+            back=_safe_back(back, "/list/next_action"),
+            contexts=store.list_contexts(),
+            areas=store.list_areas(),
+            projects=store.list_projects(),
+            time_estimates=TIME_ESTIMATES,
+            state_choices=[(str(s), STATE_LABELS[s]) for s in ItemState],
+        )
+
+    @app.post("/items/{item_id}/edit")
+    def item_edit(
+        item_id: int,
+        title: str = Form(...),
+        notes: str = Form(""),
+        state: str = Form(...),
+        context_id: str = Form(""),
+        energy: str = Form(""),
+        time_estimate_min: str = Form(""),
+        priority: str = Form(""),
+        project_id: str = Form(""),
+        area_id: str = Form(""),
+        due_date: str = Form(""),
+        defer_until: str = Form(""),
+        waiting_on: str = Form(""),
+        back: str = Form("/list/next_action"),
+    ):
+        if state not in {str(s) for s in ItemState}:
+            state = str(ItemState.NEXT_ACTION)
+
+        store.update_item(
+            item_id,
+            title=title,
+            notes=notes,
+            state=state,
+            context_id=_int_or_none(context_id),
+            energy=_str_or_none(energy),
+            time_estimate_min=_int_or_none(time_estimate_min),
+            priority=_int_or_none(priority),
+            project_id=_int_or_none(project_id),
+            area_id=_int_or_none(area_id),
+            due_date=_str_or_none(due_date),
+            defer_until=_str_or_none(defer_until),
+            waiting_on=_str_or_none(waiting_on),
+        )
         return RedirectResponse(_safe_back(back, "/list/next_action"), status_code=303)
 
     # ── Projects ─────────────────────────────────────────────────────────────

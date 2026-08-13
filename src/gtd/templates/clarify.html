@@ -93,8 +93,13 @@
           </select>
         </div>
         <div>
-          <label for="time_estimate_min">Minutes</label>
-          <input type="number" id="time_estimate_min" name="time_estimate_min" min="1" step="5">
+          <label for="time_estimate_min">How long</label>
+          <select id="time_estimate_min" name="time_estimate_min">
+            <option value="">—</option>
+            {% for minutes, label in time_estimates %}
+            <option value="{{ minutes }}">{{ label }}</option>
+            {% endfor %}
+          </select>
         </div>
       </div>
 

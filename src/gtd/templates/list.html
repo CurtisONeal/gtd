@@ -54,6 +54,11 @@
       <input type="hidden" name="back" value="{{ back }}">
       <button type="submit" title="Mark complete">✓</button>
     </form>
+    {% elif state in ("done", "trashed") %}
+    <form method="post" action="/items/{{ item.id }}/restore" class="inline-form">
+      <input type="hidden" name="back" value="{{ back }}">
+      <button type="submit" title="Restore to next actions">↩</button>
+    </form>
     {% endif %}
 
     <div class="item-body">
@@ -76,10 +81,14 @@
       </div>
     </div>
 
+    <a class="btn linkish" href="/items/{{ item.id }}/edit?back={{ back }}" title="Edit">✎</a>
+
+    {% if state != "trashed" %}
     <form method="post" action="/items/{{ item.id }}/delete" class="inline-form">
       <input type="hidden" name="back" value="{{ back }}">
       <button type="submit" class="linkish" title="Move to trash">✕</button>
     </form>
+    {% endif %}
   </div>
   {% endfor %}
 </div>

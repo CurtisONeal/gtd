@@ -5,17 +5,14 @@ Your data stays on your machine.
 
 ## Why this exists
 
-Built after reviewing a GTD app that stored everything in Google Sheets on a
-personal Drive account. The method it implemented was sound; the substrate
-wasn't. This one keeps the method and fixes the foundation:
+Built after reviewing a GTD app that stored everything in Google Sheets on a personal Drive account. The method it implemented was sound; the substrate wasn't. This one keeps the method and fixes the foundation:
 
 - **Self-hosted** — SQLite file on your own machine, no third-party data store
 - **Real auth** — argon2id password hashing, signed session cookies, login rate limiting
 - **Reproducible build** — `uv` with a lockfile
-- **Deterministic** — no LLM anywhere in the core. Model calls belong where
-  judgment is needed (coaching, weekly review), not for moving a row between lists
-- **No JavaScript dependencies** — zero. Plain forms, POST-redirect-GET. Works
-  with JS disabled, back button behaves, refresh never double-submits
+- **Deterministic** — no LLM anywhere in the core. Model calls belong where judgment is needed (coaching, weekly review), not for moving a row between lists
+-
+- **No JavaScript dependencies** — zero. Plain forms, POST-redirect-GET. Works with JS disabled, back button behaves, refresh never double-submits
 
 ## Getting started
 

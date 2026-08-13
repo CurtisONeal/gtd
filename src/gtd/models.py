@@ -54,6 +54,27 @@ class Source(StrEnum):
     CLI = "cli"
 
 
+# Time estimates as pickable buckets rather than a free number.
+#
+# GTD uses time as a *selection* criterion — "I have 20 minutes before the call,
+# what fits?" — so rough buckets are more useful than precise minutes, and much
+# faster to enter on a phone. (A `<input type=number min=1 step=5>` also steps
+# 1, 6, 11, 16… off the minimum, which is where the odd values came from.)
+TIME_ESTIMATES: tuple[tuple[int, str], ...] = (
+    (2, "2 min"),
+    (5, "5 min"),
+    (10, "10 min"),
+    (15, "15 min"),
+    (30, "30 min"),
+    (45, "45 min"),
+    (60, "1 hour"),
+    (90, "1.5 hours"),
+    (120, "2 hours"),
+    (240, "half a day"),
+    (480, "a full day"),
+)
+
+
 # Human-facing labels for list pages.
 STATE_LABELS: dict[str, str] = {
     ItemState.INBOX: "Inbox",

@@ -84,8 +84,17 @@ class Store:
         if not fields:
             return
 
+        # NOT NULL columns keep a string even when blank; everything else gets
+        # NULL rather than '' so "unset" is genuinely unset.
+        not_null = {"title", "notes", "state", "source"}
+
+        if "title" in fields and not str(fields["title"]).strip():
+            raise ValueError("title cannot be empty")
+
         sets = ", ".join(f"{k} = ?" for k in fields)
-        values = [_clean(v) for v in fields.values()]
+        values = [
+            (str(v).strip() if k in not_null else _clean(v)) for k, v in fields.items()
+        ]
         with self.db.connect() as conn:
             conn.execute(
                 f"UPDATE items SET {sets}, updated_at = ? WHERE id = ?",
