@@ -96,6 +96,7 @@ should end up in `ADR.md` when it lands.
 - **Horizons above areas of focus** (goals, vision, purpose — Allen's H3–H5) are
   entirely absent. Deliberate for now: they're review artifacts more than daily
   ones. Revisit if the Weekly Review flow gets built.
-- **Is `benton` the right Benton Roberts?** Name matched exactly and the profile
-  fits, but it lists `bentonroberts.com` / Elevate Services rather than the
-  pannix.com association. Confirm when he accepts, or revoke if wrong.
+- ~~Is `benton` the right Benton Roberts?~~ **Resolved 2026-08-14:** yes,
+  confirmed by Curtis. The `bentonroberts.com` / Elevate Services listing rather
+  than pannix.com is fine. Invited for visibility; unlikely to actively
+  contribute.
