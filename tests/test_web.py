@@ -19,6 +19,9 @@ def settings(tmp_path):
         secure_cookies=False,
         session_max_age=3600,
         capture_token="test-capture-token",
+        local_only=False,
+        host="127.0.0.1",
+        port=8765,
     )
 
 
@@ -559,3 +562,86 @@ def test_add_form_appears_on_the_lists_that_need_it(auth_client):
         assert "Add directly to" in auth_client.get(f"/list/{state}").text
     for state in ("done", "trashed"):
         assert "Add directly to" not in auth_client.get(f"/list/{state}").text
+
+
+# ── Local-only enforcement (ADR-010) ─────────────────────────────────────────
+
+def _local_only_app(settings, tmp_path):
+    from dataclasses import replace
+    return create_app(replace(settings, local_only=True, db_path=tmp_path / "lo.db"))
+
+
+def test_loopback_predicate():
+    from gtd.web import _is_loopback
+    assert _is_loopback("127.0.0.1")
+    assert _is_loopback("127.1.2.3")      # all of 127/8, not just .1
+    assert _is_loopback("::1")
+    assert _is_loopback("localhost")
+    assert not _is_loopback("0.0.0.0")
+    assert not _is_loopback("100.82.195.54")   # a tailnet address is NOT local
+    assert not _is_loopback("192.168.86.30")   # nor is the LAN
+    assert not _is_loopback(None)
+    assert not _is_loopback("evil.example.com")
+
+
+def test_local_only_allows_loopback_callers(settings, tmp_path):
+    """A caller on this machine is unaffected.
+
+    Note TestClient defaults its peer address to the literal string
+    "testclient", not an IP — so a loopback address has to be set explicitly.
+    `_is_loopback` deliberately does NOT whitelist that string: weakening the
+    production check to satisfy a test harness would defeat the point.
+    """
+    app = _local_only_app(settings, tmp_path)
+    app.state.store.upsert_user("curtis", hash_password(PASSWORD))
+    local = TestClient(app, client=("127.0.0.1", 51000))
+    assert local.get("/login").status_code == 200
+
+    v6 = TestClient(app, client=("::1", 51001))
+    assert v6.get("/login").status_code == 200
+
+
+def test_local_only_rejects_remote_callers(settings, tmp_path):
+    app = _local_only_app(settings, tmp_path)
+    # client=... sets the peer address TestClient reports.
+    remote = TestClient(app, client=("100.82.195.54", 51234))
+    resp = remote.get("/login")
+    assert resp.status_code == 403
+    assert "local-only" in resp.text
+
+
+def test_local_only_rejects_remote_before_auth_or_session(settings, tmp_path):
+    """The guard is outermost: a remote caller cannot even reach the login POST,
+    so it can't consume rate-limit budget or touch the session."""
+    app = _local_only_app(settings, tmp_path)
+    app.state.store.upsert_user("curtis", hash_password(PASSWORD))
+    remote = TestClient(app, client=("10.0.0.9", 4444))
+
+    for path, method in (("/", "get"), ("/healthz", "get"), ("/inbox", "get")):
+        assert getattr(remote, method)(path).status_code == 403
+
+    resp = remote.post("/login", data={"username": "curtis", "password": PASSWORD})
+    assert resp.status_code == 403
+    assert "set-cookie" not in {k.lower() for k in resp.headers}
+
+
+def test_local_only_off_by_default_permits_remote(settings, tmp_path):
+    """Personal instances on a tailnet must keep working — this is opt-in."""
+    from dataclasses import replace
+    app = create_app(replace(settings, local_only=False, db_path=tmp_path / "open.db"))
+    remote = TestClient(app, client=("100.82.195.54", 51234))
+    assert remote.get("/login").status_code == 200
+
+
+def test_effective_host_overrides_configured_host_when_local_only():
+    from dataclasses import replace
+    from gtd.config import Settings
+    from pathlib import Path as _P
+
+    base = Settings(
+        db_path=_P("x.db"), export_dir=_P("e"), session_secret="s",
+        secure_cookies=False, session_max_age=1, capture_token=None,
+        local_only=False, host="0.0.0.0", port=8765,
+    )
+    assert base.effective_host == "0.0.0.0"
+    assert replace(base, local_only=True).effective_host == "127.0.0.1"

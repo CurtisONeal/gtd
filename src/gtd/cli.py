@@ -102,6 +102,42 @@ def cmd_gen_secret(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    """Run the web server, honouring GTD_LOCAL_ONLY.
+
+    Preferred over invoking uvicorn directly: with GTD_LOCAL_ONLY=true this
+    refuses to bind anything but loopback, rather than quietly doing what it was
+    told. (The app also rejects non-loopback *callers* at runtime, so the
+    guarantee survives someone bypassing this command — see ADR-010.)
+    """
+    import uvicorn
+
+    settings = load_settings()
+    store, _ = _store()
+
+    host = args.host or settings.effective_host
+    port = args.port or settings.port
+
+    if settings.local_only and host not in ("127.0.0.1", "::1", "localhost"):
+        print(
+            f"Refusing to bind {host}: GTD_LOCAL_ONLY=true means this instance "
+            "serves only this machine.\n"
+            "Unset GTD_LOCAL_ONLY in .env if this is deliberate — but do not do "
+            "that on a work machine (see ADR-008).",
+            file=sys.stderr,
+        )
+        return 2
+
+    if store.user_count() == 0:
+        print("No login exists yet. Run `gtd set-password` first.", file=sys.stderr)
+        return 1
+
+    scope = "this machine only" if settings.local_only else "all matching interfaces"
+    print(f"Serving on http://{host}:{port}  ({scope})")
+    uvicorn.run("gtd.web:app", host=host, port=port, reload=args.reload)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="gtd", description="Self-hosted GTD system")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -121,6 +157,12 @@ def build_parser() -> argparse.ArgumentParser:
     cp = sub.add_parser("capture", help="Capture an item straight into the inbox")
     cp.add_argument("text", nargs="+")
     cp.set_defaults(func=cmd_capture)
+
+    sv = sub.add_parser("serve", help="Run the web server (respects GTD_LOCAL_ONLY)")
+    sv.add_argument("--host", help="Override the configured host")
+    sv.add_argument("--port", type=int, help="Override the configured port")
+    sv.add_argument("--reload", action="store_true", help="Auto-reload on code changes")
+    sv.set_defaults(func=cmd_serve)
 
     sub.add_parser("status", help="Show counts per list").set_defaults(func=cmd_status)
     sub.add_parser("gen-secret", help="Print a session secret for .env").set_defaults(

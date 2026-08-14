@@ -53,10 +53,23 @@ class Settings:
     secure_cookies: bool
     session_max_age: int
     capture_token: str | None
+    local_only: bool
+    host: str
+    port: int
 
     @property
     def capture_api_enabled(self) -> bool:
         return bool(self.capture_token)
+
+    @property
+    def effective_host(self) -> str:
+        """`local_only` wins over any configured host.
+
+        A work instance must not be reachable from another machine, and a
+        setting that only takes effect if you remember to pass the right
+        `--host` is not a constraint — it's a suggestion. See ADR-008/ADR-010.
+        """
+        return "127.0.0.1" if self.local_only else self.host
 
 
 def load_settings(env_file: Path | None = None) -> Settings:
@@ -76,4 +89,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         secure_cookies=_as_bool(os.environ.get("GTD_SECURE_COOKIES"), False),
         session_max_age=int(os.environ.get("GTD_SESSION_MAX_AGE", 60 * 60 * 24 * 30)),
         capture_token=os.environ.get("GTD_CAPTURE_TOKEN", "").strip() or None,
+        local_only=_as_bool(os.environ.get("GTD_LOCAL_ONLY"), False),
+        host=os.environ.get("GTD_HOST", "127.0.0.1").strip() or "127.0.0.1",
+        port=int(os.environ.get("GTD_PORT", 8765)),
     )

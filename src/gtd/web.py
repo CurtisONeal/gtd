@@ -7,12 +7,19 @@ with JS disabled, the back button behaves, and refreshing never re-submits.
 
 from __future__ import annotations
 
+import ipaddress
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -53,6 +60,22 @@ def _safe_back(value: str | None, default: str) -> str:
     return value
 
 
+def _is_loopback(host: str | None) -> bool:
+    """True only for addresses on this machine.
+
+    Uses the real peer address from the socket, never a forwarded header — those
+    are attacker-controlled and would defeat the point.
+    """
+    if not host:
+        return False
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        # A UNIX socket or a hostname rather than an IP. "localhost" resolves
+        # here; anything else is not something we can vouch for.
+        return host in {"localhost", "::1"}
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
 
@@ -89,6 +112,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         same_site="lax",       # blocks cookies on cross-site POST — our CSRF defense
         https_only=settings.secure_cookies,
     )
+
+    # Registered last, so it is the OUTERMOST middleware and runs before session
+    # parsing or auth. This is the structural half of the local-only guarantee:
+    # `gtd serve` refuses to bind a public interface, but someone can always
+    # invoke uvicorn directly with --host 0.0.0.0. This check does not care what
+    # was bound — it rejects any request whose peer is not on this machine, so
+    # the constraint holds regardless of how the process was started.
+    if settings.local_only:
+        @app.middleware("http")
+        async def local_only_guard(request: Request, call_next):
+            if not _is_loopback(request.client.host if request.client else None):
+                return PlainTextResponse(
+                    "This instance is configured local-only (GTD_LOCAL_ONLY=true) "
+                    "and serves requests from this machine only.",
+                    status_code=403,
+                )
+            return await call_next(request)
 
     def render(request: Request, template: str, **ctx: Any) -> HTMLResponse:
         """Every page gets the nav counts and today's date."""

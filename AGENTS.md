@@ -39,6 +39,13 @@ personal data in a third-party spreadsheet with no real auth.
    assume a work instance is reachable from elsewhere, and do not build bridges
    between a work instance and a personal one. See ADR-008.
 
+8. **Do not weaken the `GTD_LOCAL_ONLY` guard.** It is enforced in two places
+   (`gtd serve` refuses a public bind; the outermost middleware rejects
+   non-loopback peers). Never read the peer address from `X-Forwarded-For` or
+   any other header — it must come from the socket. If a test fails against it,
+   fix the test, not the check: `TestClient` reports its peer as the literal
+   string `"testclient"`, which is correctly treated as non-local. See ADR-010.
+
 ## Design principles
 
 - **Capture must be frictionless.** `capture()` takes a title and nothing else.

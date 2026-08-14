@@ -221,3 +221,43 @@ Actions). Done and Trash get none — they are outcomes, not destinations.
   friction with no methodological payoff.
 - Direct-added items skip the inbox entirely — verified by test, since silently
   incrementing the inbox count would undermine inbox-zero as a signal.
+
+---
+
+## ADR-010: `GTD_LOCAL_ONLY` is enforced in code, not documented in prose
+
+**Status:** Accepted
+
+**Context.** ADR-008 established that work instances are local-only. That was
+recorded in the README and in `AGENTS.md` — but nothing stopped a launch
+argument, a copied plist, or a future edit from binding a public interface
+anyway. A constraint that lives only in documentation is a suggestion, and this
+one guards the boundary between a work machine and a personal network.
+
+**Decision.** A `GTD_LOCAL_ONLY` setting, enforced in two independent places:
+
+1. **`gtd serve`** refuses to bind a non-loopback host and exits non-zero, with
+   a message naming ADR-008. `Settings.effective_host` also forces `127.0.0.1`
+   regardless of `GTD_HOST`.
+2. **A request-level guard**, registered as the outermost middleware, rejects
+   any request whose peer address is not on this machine with `403` — before
+   session parsing, auth, or rate limiting.
+
+The second is what makes the guarantee hold: (1) alone is bypassed by running
+`uvicorn --host 0.0.0.0` directly, which is exactly the accident this needs to
+survive. Verified against a real remote connection over a tailnet, not only in
+tests.
+
+**Consequences.**
+- The peer address is read from the socket (`request.client`), never from
+  `X-Forwarded-For` or similar — those are client-controlled and would defeat
+  the check. This means a reverse proxy in front would make every request look
+  local; that is consistent with ADR-008, which forbids one on a work instance.
+- Off by default. Personal instances on a tailnet are unaffected, and there is a
+  test asserting that so the default can't quietly flip.
+- `_is_loopback` accepts all of `127.0.0.0/8`, `::1`, and the hostname
+  `localhost`, and nothing else. Notably it does **not** whitelist Starlette's
+  `TestClient` default peer string `"testclient"` — a test discovering this had
+  its fixture corrected rather than the production check weakened.
+- A tailnet address (`100.x`) and a LAN address (`192.168.x`) are both treated
+  as remote. "Local" means this machine, not this network.

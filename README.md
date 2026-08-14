@@ -79,6 +79,7 @@ uv run gtd set-password     # create or change the login
 uv run gtd capture "..."    # capture straight to the inbox
 uv run gtd status           # counts per list, stalled project count
 uv run gtd export           # write markdown copies of every list
+uv run gtd serve            # run the web server (honours GTD_LOCAL_ONLY)
 uv run gtd gen-secret       # print a session secret for .env
 ```
 
@@ -210,9 +211,21 @@ instances. Keep `--host 127.0.0.1`, do not install Tailscale, and do not put a
 tunnel or reverse proxy in front of it. A work instance's data stays on the work
 machine and never traverses a personal network.
 
-Practically: clone the repo, `uv run gtd init-db`, `uv run gtd set-password`, run
-it on localhost. Separate `.env`, separate `GTD_DB_PATH`, no shared state with
-any personal instance.
+Practically: clone the repo, `uv run gtd init-db`, `uv run gtd set-password`,
+then set **`GTD_LOCAL_ONLY=true`** in `.env` and run `uv run gtd serve`.
+Separate `.env`, separate `GTD_DB_PATH`, no shared state with any personal
+instance.
+
+`GTD_LOCAL_ONLY` is enforced, not advisory, in two independent places:
+
+1. `gtd serve` refuses to bind anything but loopback and exits non-zero.
+2. The app rejects any request whose peer address isn't on this machine, with
+   `403`, before session parsing or auth. This holds even if someone bypasses
+   `gtd serve` and runs `uvicorn --host 0.0.0.0` directly — verified by test and
+   against a real remote connection.
+
+The peer address comes from the socket, never from a forwarded header, so it
+can't be spoofed by a client.
 
 ### Phase 3 — TLS (optional)
 
