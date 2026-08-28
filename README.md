@@ -249,6 +249,17 @@ with a `Authorization: Bearer <GTD_CAPTURE_TOKEN>` header. Disabled unless
 `GTD_CAPTURE_TOKEN` is set. Intended for a Discord bot, an email poller, or a
 phone shortcut — so capture never depends on opening the web UI.
 
+The planned Discord integration lives outside this repo in
+`/Users/s_admin/Documents/agent_set_up/direct_scripts_bot`. That bot currently
+handles deterministic reminder/todo slash commands; it does not yet call GTD's
+capture API. The integration boundary is intentionally small: the bot should
+send a JSON request to this endpoint, and this app should not import or depend
+on `agent_set_up` code.
+
+Keep the secrets separate. `DISCORD_BOT_TOKEN` belongs in the bot project's
+local `.env`; `GTD_CAPTURE_TOKEN` belongs in this repo's local `.env`. Neither
+secret belongs in Git.
+
 ## Project docs
 
 | File | What's in it |

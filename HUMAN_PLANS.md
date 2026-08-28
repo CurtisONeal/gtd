@@ -12,10 +12,6 @@ should end up in `ADR.md` when it lands.
 
 ## Inbox — unsorted, undecided
 
-- Weekly Review flow. Still the biggest gap versus the method as written — Allen
-  calls it the critical success factor, and there's currently nothing. Probably a
-  guided page: stalled projects, waiting-for items older than N days, someday
-  list resurfacing, inbox-to-zero check.
 - **Tailnet-only binding.** The personal instance listens on `0.0.0.0`, so it's
   reachable from the home LAN as well as the tailnet; the login is the only gate
   there. `GTD_LOCAL_ONLY` does *not* cover this — it means *this machine only*,
@@ -43,17 +39,99 @@ should end up in `ADR.md` when it lands.
 
 ## Next up — decided, not built
 
-- **Discord capture.** `POST /api/capture` is built and tested but disabled
-  until `GTD_CAPTURE_TOKEN` is set. Blocked on a Discord bot token for the
-  separate `direct_scripts_bot` project. Once live: `/capture <text>` from a
-  phone straight into the inbox.
-- **Deploy the work instance.** Design and enforcement are done (see below);
-  what remains is the deployment itself on the work machine: clone, `init-db`,
-  `set-password`, set `GTD_LOCAL_ONLY=true`, `gtd serve`. Separate `.env` and
-  `GTD_DB_PATH`; no shared data with the personal instance, ever.
-- **Phone onto the tailnet.** Install Tailscale on the phone and sign in with the
-  same account, then `http://octobobs-mac-mini.tail7ccdf0.ts.net:8765`. Use the
-  DNS name rather than the raw IP — it survives the address changing.
+- **Weekly Review flow.** Build a guided server-rendered weekly review feature.
+  This is the biggest gap versus the method as written: Allen calls weekly
+  review the critical success factor, and this app currently has no review flow.
+
+  Next action:
+  - Design the `/review/weekly` route and page sequence using the existing
+    no-JS, POST-redirect-GET UI style.
+
+  Expected review surfaces:
+  - Inbox-to-zero check.
+  - Active projects with no open next action or waiting item.
+  - Waiting For items older than a configurable/reasonable age.
+  - Someday/Maybe items to reconsider.
+  - Deferred/tickler items becoming current.
+  - A final checklist confirming the system is current enough to trust.
+
+- **Discord capture.** Goal: `/capture <text>` in Discord sends the text to this
+  GTD instance through `POST /api/capture`, so phone capture does not require
+  opening the web UI.
+
+  Current known state:
+  - GTD already has `POST /api/capture`.
+  - The API is disabled until `GTD_CAPTURE_TOKEN` is set.
+  - `direct_scripts_bot` code exists at
+    `/Users/s_admin/Documents/agent_set_up/direct_scripts_bot`.
+  - The bot currently has deterministic slash commands for reminders and todos:
+    `/add remind`, `/add todo`, `/list remind`, and `/read todos`.
+  - The bot does not yet implement a GTD `/capture` slash command and does not
+    call GTD's `POST /api/capture`.
+  - The bot has `.env.example`, but no local `.env` was present during the
+    2026-08-28 check.
+  - The launchd plist exists at
+    `~/Library/LaunchAgents/local.directscriptsbot.plist`, but
+    `local.directscriptsbot` was not loaded during the 2026-08-28 check.
+  - We do not know from local files whether a Discord application for
+    `direct_scripts_bot` already exists. Curtis must check the Discord
+    Developer Portal.
+  - `agent_set_up` does include Discord context-reset tooling:
+    `scripts/agent/clear_discord_session.sh`, wired to the plain-text Hermes
+    verbs `clear tokens` / `clear session`. That is separate from
+    `direct_scripts_bot`; the slash-command equivalent is only planned.
+
+  Human next action:
+  - In Discord Developer Portal, confirm whether the Discord application for
+    `direct_scripts_bot` exists. If it does not, create it. Then create/reset the
+    Discord bot token and keep it out of Git.
+
+  Future code action, only with explicit authorization:
+  - Add a GTD capture slash command to the existing `direct_scripts_bot` code,
+    then wire its environment to `GTD_CAPTURE_TOKEN` and the GTD capture URL.
+
+  Confirm or create the Discord application:
+  - Open `https://discord.com/developers/applications`.
+  - Look for an existing application named `direct_scripts_bot`.
+  - If absent, choose New Application, name it `direct_scripts_bot`, accept the
+    developer terms, and create it.
+  - Open the app's Bot page. Newly created Discord apps normally have a bot user;
+    if the UI offers Add Bot instead, add one.
+  - Prefer a slash command implementation for `/capture <text>`. That should use
+    `applications.commands`; do not enable privileged Message Content intent
+    unless the bot code explicitly reads ordinary message text.
+  - Install/invite the app to the intended Discord server with the least
+    permissions needed. For a slash-command-only capture bot, start with
+    `applications.commands`; add `bot` and Send Messages only if the bot needs to
+    post channel replies.
+
+  Create the Discord bot token:
+  - In the Discord Developer Portal, open `direct_scripts_bot`.
+  - Go to Bot -> Token.
+  - Use Reset Token to generate a token, then copy it immediately.
+  - Store it in a password manager or the separate bot project's local `.env` as
+    `DISCORD_BOT_TOKEN=...`.
+  - Never paste the Discord bot token into this repo, Discord chat, docs, or Git.
+    If it leaks, reset it in the Developer Portal.
+
+  Set `GTD_CAPTURE_TOKEN` on the GTD server:
+  - Generate a separate GTD shared secret. Do not reuse the Discord bot token.
+    Example: `python -c 'import secrets; print(secrets.token_urlsafe(32))'`.
+  - Add it to `/Users/s_admin/dev/gtd/.env` as `GTD_CAPTURE_TOKEN=<generated>`.
+    The `.env` file is local-only and must stay uncommitted.
+  - Restart the launchd service so `gtd.web:app` reloads `.env`:
+    `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/local.gtd.plist`
+    then
+    `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.gtd.plist`.
+  - Configure the Discord bot process with the same `GTD_CAPTURE_TOKEN` and the
+    capture URL. If the bot runs on this Mac, use
+    `http://127.0.0.1:8765/api/capture`; if it runs from another tailnet device,
+    use `http://octobobs-mac-mini.tail7ccdf0.ts.net:8765/api/capture`.
+  - The bot should call GTD with:
+    `Authorization: Bearer <GTD_CAPTURE_TOKEN>` and JSON
+    `{"title": "<captured text>", "source": "discord"}`.
+  - Smoke test by capturing a real disposable item, then delete or clarify it in
+    GTD.
 
 ## Done
 
@@ -82,6 +160,9 @@ should end up in `ADR.md` when it lands.
   Waiting For with a real prerequisite link instead of title text. Completing
   the prerequisite promotes newly unblocked work back to Next Actions. See
   ADR-011 and `FIXED_BUGS.md`.
+- 2026-08-28 — **Phone joined the tailnet.** The phone can reach the personal
+  GTD instance through Tailscale at
+  `http://octobobs-mac-mini.tail7ccdf0.ts.net:8765`.
 
 ---
 
