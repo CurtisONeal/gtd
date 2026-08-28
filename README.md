@@ -47,6 +47,12 @@ lack entirely: `defer_until`, a real tickler. Deferred items *disappear* from
 next actions until their date arrives, and the list tells you how many are
 hidden so it's never silent.
 
+Waiting For also handles blocked work. Use **Waiting on** for people or
+external events, and **Blocked by task** for task dependencies such as
+`Buy cookies -> Eat cookies`. When the blocking task is completed, the blocked
+item automatically returns to Next Actions. Free-text `waiting_on` notes do not
+auto-unblock; only the real dependency link does.
+
 ## The clarify flow
 
 Inbox processing walks Allen's actual decision tree, one question per page:
@@ -115,9 +121,9 @@ option rather than a rewrite.
 uv run pytest -q
 ```
 
-94 tests covering the store, state transitions, the tickler, auth, rate
-limiting, markdown export, editing and undo, and every web route including the
-full clarify tree. Each test gets its own temp SQLite file — no mocks, no
+The tests cover the store, state transitions, dependencies, the tickler, auth,
+rate limiting, markdown export, editing and undo, and every web route including
+the full clarify tree. Each test gets its own temp SQLite file — no mocks, no
 shared state.
 
 ## Running it as a service
@@ -249,6 +255,8 @@ phone shortcut — so capture never depends on opening the web UI.
 |---|---|
 | `ADR.md` | Architecture decisions and why — read before changing the data model |
 | `AGENTS.md` | Operating rules and known gotchas, aimed at AI coding agents |
+| `FIXED_BUGS.md` | Concrete bugs fixed, symptoms, causes, and regression tests |
+| `GTD_METHOD.md` | David Allen GTD method context and how the app maps to it |
 | `HUMAN_PLANS.md` | Scratchpad for ideas, open questions, and what's next |
 
 ## Security notes

@@ -261,3 +261,50 @@ tests.
   its fixture corrected rather than the production check weakened.
 - A tailnet address (`100.x`) and a LAN address (`192.168.x`) are both treated
   as remote. "Local" means this machine, not this network.
+
+---
+
+## ADR-011: Blocked work lives in Waiting For with real item dependencies
+
+**Status:** Accepted
+
+**Context.** The Waiting For list originally modeled only delegated work: an
+item had `state = 'waiting_for'` and a free-text `waiting_on` field such as
+"Dana". That could describe task dependencies informally ("Eat cookies" waiting
+on "Buy cookies"), but the app could not understand the relationship. The
+blocked item was not linked to its prerequisite, the UI could not distinguish
+"waiting on Dana" from "blocked by Buy cookies", and completing the prerequisite
+did not make the blocked item available.
+
+**Decision.** Blocked work remains in the existing Waiting For state, because
+it is not currently actionable by the user. Add an `item_dependencies` table to
+represent prerequisite item links. Keep `waiting_on` for delegated/external
+waiting. Display internal blockers as "blocked by ..." and external waiting as
+"waiting on ...". When completing an item clears all prerequisites for a waiting
+item, move the waiting item back to Next Actions and remove the dependency
+links.
+
+**Evaluation.**
+- This fits David Allen's method better than a new "Blocked" list: Waiting For
+  is already the GTD bucket for reminders that cannot move until someone or
+  something else acts.
+- A real link table is preferable to overloading text because it enables
+  unblocking behavior, avoids brittle title matching, and preserves a future
+  path to multiple prerequisites.
+- Auto-promoting to Next Actions on prerequisite completion is deterministic
+  and local. It does not require model judgment, scheduling heuristics, or a
+  background worker.
+- The design deliberately stops short of a general dependency graph UI. The app
+  needs "what am I waiting for?" and "what just became actionable?", not a
+  project-planning engine.
+
+**Consequences.**
+- The schema gains a second relationship table, but `items.state` remains the
+  list boundary. A blocked item is still one item row whose state is Waiting
+  For.
+- Cycles and self-dependencies are rejected so a user cannot create impossible
+  wait chains.
+- Project stall detection now treats either a Next Action or a Waiting For item
+  as evidence that an active project has movement defined.
+- If future review UX is added, it should surface auto-unblocked items clearly
+  rather than making the user wonder why something reappeared.

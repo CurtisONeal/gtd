@@ -78,6 +78,10 @@ should end up in `ADR.md` when it lands.
   secret. All absent. Collaborators invited with write access: `ecodad`
   (Jonathan Hunt), `drjat42` (Josh Tauber), `xdg` (David Golden), `benton`
   (Benton Roberts).
+- 2026-08-24 — **First-class task dependencies.** Blocked work now lives in
+  Waiting For with a real prerequisite link instead of title text. Completing
+  the prerequisite promotes newly unblocked work back to Next Actions. See
+  ADR-011 and `FIXED_BUGS.md`.
 
 ---
 

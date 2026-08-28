@@ -182,6 +182,50 @@ def test_due_soon_includes_overdue_and_excludes_far_future(store):
     assert {r["title"] for r in store.due_soon()} == {"late", "this week"}
 
 
+# ── Item dependencies: blocked work waits for prerequisite work ───────────────
+
+def test_waiting_item_can_be_blocked_by_another_item(store):
+    blocker = store.capture("Buy cookies")
+    blocked = store.capture("Eat cookies")
+    store.set_state(blocker, ItemState.NEXT_ACTION)
+    store.set_state(blocked, ItemState.WAITING_FOR)
+
+    store.add_dependency(blocked, blocker)
+
+    item = store.list_items(ItemState.WAITING_FOR)[0]
+    assert item["title"] == "Eat cookies"
+    assert item["blocked_by_titles"] == "Buy cookies"
+    assert store.list_dependencies(blocked)[0]["prerequisite_item_id"] == blocker
+
+
+def test_completing_a_prerequisite_unblocks_waiting_items(store):
+    blocker = store.capture("Buy cookies")
+    blocked = store.capture("Eat cookies")
+    store.set_state(blocker, ItemState.NEXT_ACTION)
+    store.set_state(blocked, ItemState.WAITING_FOR)
+    store.add_dependency(blocked, blocker)
+
+    store.complete(blocker)
+
+    assert store.get_item(blocked)["state"] == ItemState.NEXT_ACTION
+    assert store.list_dependencies(blocked) == []
+
+
+def test_dependency_rejects_self_blocking(store):
+    item_id = store.capture("Impossible loop")
+    with pytest.raises(ValueError, match="itself"):
+        store.add_dependency(item_id, item_id)
+
+
+def test_dependency_rejects_cycles(store):
+    first = store.capture("First")
+    second = store.capture("Second")
+    store.add_dependency(second, first)
+
+    with pytest.raises(ValueError, match="cycle"):
+        store.add_dependency(first, second)
+
+
 # ── Projects ─────────────────────────────────────────────────────────────────
 
 def test_project_lifecycle_and_open_action_count(store):
@@ -200,6 +244,16 @@ def test_project_lifecycle_and_open_action_count(store):
     store.complete_project(pid)
     assert store.list_projects() == []                     # no longer active
     assert store.get_project(pid)["status"] == ProjectStatus.DONE
+
+
+def test_project_with_waiting_item_is_not_stalled_without_next_action(store):
+    pid = store.create_project("Cookie party")
+    waiting = store.capture("Eat cookies")
+    store.set_state(waiting, ItemState.WAITING_FOR, project_id=pid, waiting_on="Buy cookies")
+
+    project = store.list_projects()[0]
+    assert project["open_actions"] == 0
+    assert project["waiting_items"] == 1
 
 
 def test_project_name_required(store):

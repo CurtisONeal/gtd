@@ -527,6 +527,76 @@ def test_direct_add_waiting_for_captures_the_person(auth_client):
     assert item["due_date"] == "2026-09-01"
 
 
+def test_direct_add_waiting_for_can_be_blocked_by_a_task(auth_client):
+    store = store_of(auth_client)
+    blocker = store.capture("Buy cookies")
+    store.set_state(blocker, ItemState.NEXT_ACTION)
+
+    auth_client.post(
+        "/list/waiting_for/add",
+        data={"title": "Eat cookies", "blocking_item_id": str(blocker)},
+    )
+
+    item = store.list_items(ItemState.WAITING_FOR)[0]
+    assert item["title"] == "Eat cookies"
+    assert item["blocked_by_titles"] == "Buy cookies"
+
+
+def test_waiting_page_distinguishes_task_blockers_from_people(auth_client):
+    store = store_of(auth_client)
+    blocker = store.capture("Buy cookies")
+    blocked = store.capture("Eat cookies")
+    store.set_state(blocker, ItemState.NEXT_ACTION)
+    store.set_state(blocked, ItemState.WAITING_FOR, waiting_on="Dana")
+    store.add_dependency(blocked, blocker)
+
+    page = auth_client.get("/list/waiting_for").text
+    assert "blocked by Buy cookies" in page
+    assert "waiting on Dana" in page
+
+
+def test_waiting_page_calls_out_task_unblocking(auth_client):
+    page = auth_client.get("/list/waiting_for").text
+    assert "Task blockers return to Next Actions when completed" in page
+    assert "Use Waiting on for people or external events" in page
+
+
+def test_completing_blocker_promotes_waiting_item(auth_client):
+    store = store_of(auth_client)
+    blocker = store.capture("Buy cookies")
+    blocked = store.capture("Eat cookies")
+    store.set_state(blocker, ItemState.NEXT_ACTION)
+    store.set_state(blocked, ItemState.WAITING_FOR)
+    store.add_dependency(blocked, blocker)
+
+    auth_client.post(f"/items/{blocker}/complete", data={"back": "/list/next_action"})
+
+    assert store.get_item(blocked)["state"] == ItemState.NEXT_ACTION
+
+
+def test_edit_can_assign_a_blocking_task(auth_client):
+    store = store_of(auth_client)
+    blocker = store.capture("Buy cookies")
+    blocked = store.capture("Eat cookies")
+    store.set_state(blocker, ItemState.NEXT_ACTION)
+    store.set_state(blocked, ItemState.NEXT_ACTION)
+
+    auth_client.post(
+        f"/items/{blocked}/edit",
+        data={
+            "title": "Eat cookies",
+            "notes": "",
+            "state": "waiting_for",
+            "blocking_item_id": str(blocker),
+            "back": "/list/next_action",
+        },
+    )
+
+    item = store.list_items(ItemState.WAITING_FOR)[0]
+    assert item["title"] == "Eat cookies"
+    assert item["blocked_by_titles"] == "Buy cookies"
+
+
 def test_direct_add_next_action_takes_a_context(auth_client):
     store = store_of(auth_client)
     context_id = store.list_contexts()[0]["id"]

@@ -95,6 +95,17 @@
       <input type="text" id="waiting_on" name="waiting_on" value="{{ item.waiting_on or '' }}"
              placeholder="Only for Waiting For">
     </div>
+    <div>
+      <label for="blocking_item_id">Blocked by task</label>
+      <select id="blocking_item_id" name="blocking_item_id">
+        <option value="">—</option>
+        {% for candidate in blocker_candidates %}
+        <option value="{{ candidate.id }}" {% if current_blocker_id == candidate.id %}selected{% endif %}>
+          {{ candidate.title }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
   </div>
 
   <div class="actions">

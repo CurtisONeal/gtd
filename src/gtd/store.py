@@ -107,11 +107,47 @@ class Store:
         self.update_item(item_id, state=str(state), **fields)
 
     def complete(self, item_id: int) -> None:
+        now = _now()
         with self.db.connect() as conn:
             conn.execute(
                 "UPDATE items SET state = ?, completed_at = ?, updated_at = ? WHERE id = ?",
-                (str(ItemState.DONE), _now(), _now(), item_id),
+                (str(ItemState.DONE), now, now, item_id),
             )
+            conn.execute("DELETE FROM item_dependencies WHERE blocked_item_id = ?", (item_id,))
+
+            dependents = conn.execute(
+                """SELECT DISTINCT d.blocked_item_id
+                   FROM item_dependencies d
+                   JOIN items i ON i.id = d.blocked_item_id
+                   WHERE d.prerequisite_item_id = ? AND i.state = ?""",
+                (item_id, str(ItemState.WAITING_FOR)),
+            ).fetchall()
+
+            for row in dependents:
+                blocked_id = row["blocked_item_id"]
+                open_blockers = conn.execute(
+                    """SELECT COUNT(*) AS n
+                       FROM item_dependencies d
+                       JOIN items p ON p.id = d.prerequisite_item_id
+                       WHERE d.blocked_item_id = ? AND p.state != ?""",
+                    (blocked_id, str(ItemState.DONE)),
+                ).fetchone()["n"]
+                if open_blockers == 0:
+                    conn.execute(
+                        """UPDATE items
+                           SET state = ?, waiting_on = NULL, updated_at = ?
+                           WHERE id = ? AND state = ?""",
+                        (
+                            str(ItemState.NEXT_ACTION),
+                            now,
+                            blocked_id,
+                            str(ItemState.WAITING_FOR),
+                        ),
+                    )
+                    conn.execute(
+                        "DELETE FROM item_dependencies WHERE blocked_item_id = ?",
+                        (blocked_id,),
+                    )
 
     def uncomplete(self, item_id: int, *, state: str = ItemState.NEXT_ACTION) -> None:
         """Reversing completion is a single UPDATE — no archive row to hunt down."""
@@ -148,7 +184,12 @@ class Store:
         """
         sql = [
             """SELECT i.*, p.name AS project_name, c.name AS context_name,
-                      a.name AS area_name, a.emoji AS area_emoji
+                      a.name AS area_name, a.emoji AS area_emoji,
+                      (SELECT GROUP_CONCAT(pr.title, ' · ')
+                         FROM item_dependencies d
+                         JOIN items pr ON pr.id = d.prerequisite_item_id
+                        WHERE d.blocked_item_id = i.id
+                          AND pr.state != 'done') AS blocked_by_titles
                FROM items i
                LEFT JOIN projects p ON p.id = i.project_id
                LEFT JOIN contexts c ON c.id = i.context_id
@@ -221,6 +262,98 @@ class Store:
                 (str(ItemState.NEXT_ACTION), str(ItemState.WAITING_FOR), horizon),
             ).fetchall()
 
+    # ── Item dependencies ───────────────────────────────────────────────────
+
+    def _would_create_dependency_cycle(
+        self, conn: sqlite3.Connection, blocked_item_id: int, prerequisite_item_id: int
+    ) -> bool:
+        row = conn.execute(
+            """WITH RECURSIVE deps(id) AS (
+                   SELECT prerequisite_item_id
+                     FROM item_dependencies
+                    WHERE blocked_item_id = ?
+                   UNION
+                   SELECT d.prerequisite_item_id
+                     FROM item_dependencies d
+                     JOIN deps ON d.blocked_item_id = deps.id
+               )
+               SELECT 1 FROM deps WHERE id = ? LIMIT 1""",
+            (prerequisite_item_id, blocked_item_id),
+        ).fetchone()
+        return row is not None
+
+    def add_dependency(self, blocked_item_id: int, prerequisite_item_id: int) -> None:
+        """Track that one item is waiting for another item to finish.
+
+        Blocked work belongs in Waiting For: it is a real commitment, but not
+        something the user can engage with until the prerequisite clears.
+        """
+        if blocked_item_id == prerequisite_item_id:
+            raise ValueError("an item cannot depend on itself")
+
+        now = _now()
+        with self.db.connect() as conn:
+            blocked = conn.execute(
+                "SELECT id FROM items WHERE id = ?", (blocked_item_id,)
+            ).fetchone()
+            prerequisite = conn.execute(
+                "SELECT id FROM items WHERE id = ?", (prerequisite_item_id,)
+            ).fetchone()
+            if blocked is None or prerequisite is None:
+                raise ValueError("dependency item not found")
+            if self._would_create_dependency_cycle(conn, blocked_item_id, prerequisite_item_id):
+                raise ValueError("dependency would create a cycle")
+
+            conn.execute(
+                """INSERT OR IGNORE INTO item_dependencies
+                   (blocked_item_id, prerequisite_item_id, created_at)
+                   VALUES (?, ?, ?)""",
+                (blocked_item_id, prerequisite_item_id, now),
+            )
+            conn.execute(
+                "UPDATE items SET state = ?, updated_at = ? WHERE id = ?",
+                (str(ItemState.WAITING_FOR), now, blocked_item_id),
+            )
+
+    def replace_dependencies(
+        self, blocked_item_id: int, prerequisite_item_ids: Sequence[int]
+    ) -> None:
+        with self.db.connect() as conn:
+            conn.execute(
+                "DELETE FROM item_dependencies WHERE blocked_item_id = ?",
+                (blocked_item_id,),
+            )
+        for prerequisite_item_id in prerequisite_item_ids:
+            self.add_dependency(blocked_item_id, prerequisite_item_id)
+
+    def list_dependencies(self, blocked_item_id: int) -> list[sqlite3.Row]:
+        with self.db.connect() as conn:
+            return conn.execute(
+                """SELECT d.*, p.title AS prerequisite_title, p.state AS prerequisite_state
+                   FROM item_dependencies d
+                   JOIN items p ON p.id = d.prerequisite_item_id
+                   WHERE d.blocked_item_id = ?
+                   ORDER BY p.title""",
+                (blocked_item_id,),
+            ).fetchall()
+
+    def list_dependency_candidates(
+        self, *, blocked_item_id: int | None = None
+    ) -> list[sqlite3.Row]:
+        sql = [
+            """SELECT i.*, p.name AS project_name
+               FROM items i
+               LEFT JOIN projects p ON p.id = i.project_id
+               WHERE i.state IN (?, ?)"""
+        ]
+        params: list[Any] = [str(ItemState.NEXT_ACTION), str(ItemState.WAITING_FOR)]
+        if blocked_item_id is not None:
+            sql.append("AND i.id != ?")
+            params.append(blocked_item_id)
+        sql.append("ORDER BY i.title")
+        with self.db.connect() as conn:
+            return conn.execute(" ".join(sql), params).fetchall()
+
     # ── Projects ─────────────────────────────────────────────────────────────
 
     def create_project(
@@ -250,7 +383,10 @@ class Store:
         sql = """SELECT p.*, a.name AS area_name, a.emoji AS area_emoji,
                         (SELECT COUNT(*) FROM items i
                           WHERE i.project_id = p.id AND i.state = 'next_action')
-                          AS open_actions
+                          AS open_actions,
+                        (SELECT COUNT(*) FROM items i
+                          WHERE i.project_id = p.id AND i.state = 'waiting_for')
+                          AS waiting_items
                  FROM projects p
                  LEFT JOIN areas a ON a.id = p.area_id"""
         params: list[Any] = []

@@ -39,6 +39,8 @@ def _annotations(row: sqlite3.Row) -> list[str]:
         bits.append(f"{emoji} {row['area_name']}".strip())
     if row["waiting_on"]:
         bits.append(f"waiting on {row['waiting_on']}")
+    if "blocked_by_titles" in keys and row["blocked_by_titles"]:
+        bits.append(f"blocked by {row['blocked_by_titles']}")
     if row["energy"]:
         bits.append(f"energy: {row['energy']}")
     if row["time_estimate_min"]:

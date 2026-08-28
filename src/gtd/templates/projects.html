@@ -3,7 +3,7 @@
 {% block content %}
 
 <h1>Projects</h1>
-<p class="sub">{{ projects|length }} active. A project with no next action is stalled.</p>
+<p class="sub">{{ projects|length }} active. A project with no next action or waiting item is stalled.</p>
 
 <details class="card">
   <summary><strong>New project</strong></summary>
@@ -36,7 +36,7 @@
   </h2>
   {% if project.outcome %}<p class="sub" style="margin-bottom:0.5rem">{{ project.outcome }}</p>{% endif %}
 
-  {% if project.open_actions == 0 %}
+  {% if project.open_actions == 0 and project.waiting_items == 0 %}
     <p class="meta"><span class="overdue">⚠ Stalled — no next action</span></p>
   {% endif %}
 

@@ -208,7 +208,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "index.html",
             due_soon=store.due_soon(),
             project_count=len(projects),
-            stalled_projects=[p for p in projects if p["open_actions"] == 0],
+            stalled_projects=[
+                p for p in projects
+                if p["open_actions"] == 0 and p["waiting_items"] == 0
+            ],
         )
 
     @app.post("/capture")
@@ -383,6 +386,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             areas=store.list_areas(),
             selected_context=ctx_id,
             selected_area=ar_id,
+            blocker_candidates=store.list_dependency_candidates(),
             back=str(request.url.path),
         )
 
@@ -392,6 +396,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title: str = Form(...),
         notes: str = Form(""),
         waiting_on: str = Form(""),
+        blocking_item_id: str = Form(""),
         context_id: str = Form(""),
         due_date: str = Form(""),
     ):
@@ -419,6 +424,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             context_id=_int_or_none(context_id),
             due_date=_str_or_none(due_date),
         )
+        blocker = _int_or_none(blocking_item_id)
+        if state == ItemState.WAITING_FOR and blocker is not None:
+            store.replace_dependencies(item_id, [blocker])
         return RedirectResponse(f"/list/{state}", status_code=303)
 
     @app.post("/items/{item_id}/complete")
@@ -450,6 +458,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         item = store.get_item(item_id)
         if item is None:
             return RedirectResponse("/", status_code=303)
+        dependencies = store.list_dependencies(item_id)
         return render(
             request,
             "edit.html",
@@ -458,6 +467,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             contexts=store.list_contexts(),
             areas=store.list_areas(),
             projects=store.list_projects(),
+            blocker_candidates=store.list_dependency_candidates(blocked_item_id=item_id),
+            current_blocker_id=(
+                dependencies[0]["prerequisite_item_id"] if dependencies else None
+            ),
             time_estimates=TIME_ESTIMATES,
             state_choices=[(str(s), STATE_LABELS[s]) for s in ItemState],
         )
@@ -477,6 +490,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         due_date: str = Form(""),
         defer_until: str = Form(""),
         waiting_on: str = Form(""),
+        blocking_item_id: str = Form(""),
         back: str = Form("/list/next_action"),
     ):
         if state not in {str(s) for s in ItemState}:
@@ -497,6 +511,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             defer_until=_str_or_none(defer_until),
             waiting_on=_str_or_none(waiting_on),
         )
+        blocker = _int_or_none(blocking_item_id)
+        if state == ItemState.WAITING_FOR and blocker is not None:
+            store.replace_dependencies(item_id, [blocker])
+        else:
+            store.replace_dependencies(item_id, [])
         return RedirectResponse(_safe_back(back, "/list/next_action"), status_code=303)
 
     # ── Projects ─────────────────────────────────────────────────────────────

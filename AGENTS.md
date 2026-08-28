@@ -1,7 +1,10 @@
 # AGENTS.md — context for AI coding agents
 
 Read this before changing anything. `ADR.md` has the reasoning behind the
-decisions below; this file is the operating rules.
+decisions below; this file is the operating rules. `GTD_METHOD.md` has the
+David Allen GTD method context behind the product behavior; read it before
+changing capture, clarify, list organization, project review, or engagement
+behavior.
 
 ## What this is
 
@@ -61,10 +64,13 @@ personal data in a third-party spreadsheet with no real auth.
 - **Disclose, don't hide.** The tickler withholds deferred items from next
   actions — and the page says how many it is withholding. Silent filtering is a
   bug.
+- **Blocked items are Waiting For items.** Use real item dependencies for
+  internal blockers and `waiting_on` text for delegated/external waits. Do not
+  create a separate blocked list or match dependencies by title. See ADR-011.
 - **Match the method.** This implements David Allen's GTD as specified: the
   clarify decision tree, the two-minute rule, contexts, the four-criteria model
   (context / time / energy / priority). If a change would drift from the method,
-  say so explicitly rather than quietly reinterpreting it.
+  say so explicitly rather than quietly reinterpreting it. See `GTD_METHOD.md`.
 
 ## Layout
 
@@ -112,6 +118,22 @@ just the fix (see `test_time_estimate_options_are_sane`).
 
 Before claiming something works, run it. The test suite passing is not the same
 as the app working — several bugs here were only visible against a live server.
+
+### Verify the artifact, not the diff
+
+A clean exit code or a passing suite proves the code ran, not that the change
+took effect. Inspect the actual OUTPUT for the specific property you changed —
+grep it, count it — on the smallest sample that can show it, before trusting a
+larger run or a full page load. Learned the expensive way in a sibling project:
+a fix shipped twice while the downstream output was provably unchanged, because
+"it ran clean" was treated as verification.
+
+### If an LLM call is ever added (see constraint 1 — none exist yet)
+
+Test what the model actually receives, not just the data structure behind it.
+A prompt-construction bug can leave the underlying data correct while the
+rendered prompt is unchanged. Assert on the literal text the call sends, not on
+the object it was built from.
 
 ## Conventions
 

@@ -11,6 +11,12 @@
   {%- endif %}
 </p>
 
+{% if state == "waiting_for" %}
+<p class="sub">
+  Use Waiting on for people or external events. Task blockers return to Next Actions when completed.
+</p>
+{% endif %}
+
 {% if state in ("next_action", "waiting_for", "someday", "reference") %}
 <details class="card">
   <summary><strong>Add directly to {{ label }}</strong></summary>
@@ -31,6 +37,15 @@
       <div>
         <label for="add_waiting_on">Waiting on</label>
         <input type="text" id="add_waiting_on" name="waiting_on" placeholder="Dana">
+      </div>
+      <div>
+        <label for="add_blocking_item_id">Blocked by task</label>
+        <select id="add_blocking_item_id" name="blocking_item_id">
+          <option value="">—</option>
+          {% for candidate in blocker_candidates %}
+          <option value="{{ candidate.id }}">{{ candidate.title }}</option>
+          {% endfor %}
+        </select>
       </div>
       <div>
         <label for="add_due">Expected by</label>
@@ -118,6 +133,7 @@
         {% if item.context_name %}<span>{{ item.context_name }}</span>{% endif %}
         {% if item.project_name %}<span>↳ {{ item.project_name }}</span>{% endif %}
         {% if item.area_name %}<span>{{ item.area_emoji }} {{ item.area_name }}</span>{% endif %}
+        {% if item.blocked_by_titles %}<span>blocked by {{ item.blocked_by_titles }}</span>{% endif %}
         {% if item.waiting_on %}<span>waiting on {{ item.waiting_on }}</span>{% endif %}
         {% if item.energy %}<span>energy: {{ item.energy }}</span>{% endif %}
         {% if item.time_estimate_min %}<span>{{ item.time_estimate_min }}m</span>{% endif %}

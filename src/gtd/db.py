@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -77,11 +77,21 @@ CREATE TABLE IF NOT EXISTS items (
     completed_at      TEXT
 );
 
+CREATE TABLE IF NOT EXISTS item_dependencies (
+    blocked_item_id      INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    prerequisite_item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    created_at           TEXT NOT NULL,
+    PRIMARY KEY (blocked_item_id, prerequisite_item_id),
+    CHECK (blocked_item_id != prerequisite_item_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_items_state       ON items(state);
 CREATE INDEX IF NOT EXISTS idx_items_project     ON items(project_id);
 CREATE INDEX IF NOT EXISTS idx_items_due_date    ON items(due_date);
 CREATE INDEX IF NOT EXISTS idx_items_defer_until ON items(defer_until);
 CREATE INDEX IF NOT EXISTS idx_projects_status   ON projects(status);
+CREATE INDEX IF NOT EXISTS idx_item_dependencies_prerequisite
+    ON item_dependencies(prerequisite_item_id);
 """
 
 # Sensible starting points so a fresh install isn't an empty void. All editable.
@@ -128,6 +138,8 @@ class Database:
                 conn.execute(
                     "INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,)
                 )
+            elif row["version"] < SCHEMA_VERSION:
+                conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
         if seed_defaults:
             self._seed_defaults()
 
