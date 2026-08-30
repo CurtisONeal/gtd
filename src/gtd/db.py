@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS items (
     due_date          TEXT,   -- ISO date. Hard deadline.
     defer_until       TEXT,   -- ISO date. Tickler: hidden from next actions until then.
     waiting_on        TEXT,   -- who, when state = waiting_for
+    rank              INTEGER,-- sequence within an ordered list; NOT priority
     source            TEXT NOT NULL DEFAULT 'web',
     created_at        TEXT NOT NULL,
     updated_at        TEXT NOT NULL,
@@ -93,6 +94,20 @@ CREATE INDEX IF NOT EXISTS idx_projects_status   ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_item_dependencies_prerequisite
     ON item_dependencies(prerequisite_item_id);
 """
+
+# Statements that bring an *existing* database up to each version. A fresh
+# database gets everything from SCHEMA above and records SCHEMA_VERSION without
+# running any of these, so each entry only has to handle the upgrade path.
+#
+# `CREATE TABLE IF NOT EXISTS` is a no-op on a database that already has the
+# table, so a new column added to SCHEMA reaches existing installs *only* if it
+# also appears here. Before this existed, `init_schema` moved the version number
+# without running anything, so a v2 database would have reported itself as v3
+# while still missing the column.
+MIGRATIONS: dict[int, tuple[str, ...]] = {
+    3: ("ALTER TABLE items ADD COLUMN rank INTEGER",),
+}
+
 
 # Sensible starting points so a fresh install isn't an empty void. All editable.
 DEFAULT_CONTEXTS = ["@computer", "@phone", "@errands", "@home", "@office", "@anywhere"]
@@ -135,10 +150,14 @@ class Database:
             conn.executescript(SCHEMA)
             row = conn.execute("SELECT version FROM schema_version").fetchone()
             if row is None:
+                # Fresh database: SCHEMA is already current, nothing to migrate.
                 conn.execute(
                     "INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,)
                 )
             elif row["version"] < SCHEMA_VERSION:
+                for version in range(row["version"] + 1, SCHEMA_VERSION + 1):
+                    for statement in MIGRATIONS.get(version, ()):
+                        conn.execute(statement)
                 conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
         if seed_defaults:
             self._seed_defaults()

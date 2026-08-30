@@ -24,6 +24,12 @@ def _today() -> str:
     return date.today().isoformat()
 
 
+# Columns an ordered list may be grouped by. Whitelisted because the name is
+# interpolated into SQL as a column. Empty until the first feature that ranks
+# within something narrower than a state (Books, by category).
+RANK_GROUPS: frozenset[str] = frozenset()
+
+
 def _clean(value: Any) -> Any:
     """Normalize empty form strings to NULL so optional columns stay genuinely
     empty rather than storing ''."""
@@ -76,7 +82,7 @@ class Store:
         allowed = {
             "title", "notes", "state", "project_id", "context_id", "area_id",
             "energy", "time_estimate_min", "priority", "due_date", "defer_until",
-            "waiting_on", "source",
+            "waiting_on", "rank", "source",
         }
         unknown = set(fields) - allowed
         if unknown:
@@ -220,6 +226,136 @@ class Store:
         )
         with self.db.connect() as conn:
             return conn.execute(" ".join(sql), params).fetchall()
+
+    # ── Ordered lists ────────────────────────────────────────────────────────
+    #
+    # Books, checklists and technology projects share one shape: an ordered,
+    # categorised list sitting outside the actionable flow. What they need that
+    # ordinary items lack is a *rank* — sequence within a group. Rank is not
+    # priority: priority is P1-P3 importance and sorts every list the same way,
+    # while rank means nothing except relative to its neighbours in one group.
+    #
+    # The grouping column differs per feature (books rank within a category,
+    # checklist items within their checklist), so it is a parameter rather than
+    # baked in. Each feature adds its column to RANK_GROUPS as it lands.
+
+    @staticmethod
+    def _check_rank_group(group: str | None) -> None:
+        """`group` becomes a column name in SQL, which parameter binding cannot
+        do for us, so it is checked against a whitelist rather than trusted.
+
+        Callers validate *before* reading the column off a row — otherwise a bad
+        name fails as a row-lookup error and the whitelist stops being the thing
+        that reports the problem.
+        """
+        if group is not None and group not in RANK_GROUPS:
+            raise ValueError(f"not a rank grouping column: {group}")
+
+    def _rank_scope(
+        self, state: str, group: str | None, group_value: Any
+    ) -> tuple[str, list[Any]]:
+        """SQL predicate isolating the one ordered list an item belongs to."""
+        self._check_rank_group(group)
+        if group is None:
+            return "state = ?", [str(state)]
+        if group_value is None:
+            return f"state = ? AND {group} IS NULL", [str(state)]
+        return f"state = ? AND {group} = ?", [str(state), group_value]
+
+    def _ensure_ranks(self, conn: sqlite3.Connection, where: str, params: list[Any]) -> None:
+        """Give every row in one group a rank, preserving how it currently reads.
+
+        Items arrive in an ordered list unranked — captured before the list
+        existed, or added without anyone caring about sequence yet. Rather than
+        refuse to reorder those, materialise ranks on first use.
+        """
+        rows = conn.execute(
+            f"""SELECT id, "rank" FROM items WHERE {where}
+                ORDER BY CASE WHEN "rank" IS NULL THEN 1 ELSE 0 END, "rank" ASC,
+                         created_at ASC, id ASC""",
+            params,
+        ).fetchall()
+        for position, row in enumerate(rows):
+            if row["rank"] != position:
+                conn.execute(
+                    'UPDATE items SET "rank" = ? WHERE id = ?', (position, row["id"])
+                )
+
+    def list_ordered(
+        self, state: str, *, group: str | None = None, group_value: Any = None
+    ) -> list[sqlite3.Row]:
+        """One ordered list, in rank order.
+
+        Unranked items sort last by age rather than disappearing, so a list
+        nobody has sequenced yet still reads sensibly.
+        """
+        where, params = self._rank_scope(state, group, group_value)
+        with self.db.connect() as conn:
+            return conn.execute(
+                f"""SELECT * FROM items WHERE {where}
+                    ORDER BY CASE WHEN "rank" IS NULL THEN 1 ELSE 0 END, "rank" ASC,
+                             created_at ASC, id ASC""",
+                params,
+            ).fetchall()
+
+    def append_to_ordered(
+        self, title: str, state: str, *, group: str | None = None, **fields: Any
+    ) -> int:
+        """Add an item to the end of an ordered list."""
+        self._check_rank_group(group)
+        item_id = self.capture(title, state=state)
+        group_value = fields.get(group) if group else None
+        where, params = self._rank_scope(state, group, group_value)
+        with self.db.connect() as conn:
+            row = conn.execute(
+                f'SELECT MAX("rank") AS top FROM items WHERE {where}', params
+            ).fetchone()
+            last = row["top"]
+        self.update_item(item_id, rank=0 if last is None else last + 1, **fields)
+        return item_id
+
+    def move_in_order(self, item_id: int, delta: int, *, group: str | None = None) -> bool:
+        """Move an item one place up (-1) or down (+1) within its ordered list.
+
+        Returns False when it is already at the end it is being moved toward —
+        the caller can redirect either way, but a no-op should not read as a
+        successful move.
+        """
+        if delta not in (-1, 1):
+            raise ValueError("delta must be -1 or 1")
+        self._check_rank_group(group)
+        item = self.get_item(item_id)
+        if item is None:
+            return False
+
+        group_value = item[group] if group else None
+        where, params = self._rank_scope(item["state"], group, group_value)
+        with self.db.connect() as conn:
+            self._ensure_ranks(conn, where, params)
+            current = conn.execute(
+                'SELECT "rank" FROM items WHERE id = ?', (item_id,)
+            ).fetchone()["rank"]
+
+            # The neighbour is whichever row is adjacent in the direction of
+            # travel, not current ± 1: ranks are only guaranteed ordered, and a
+            # deleted row can leave a gap.
+            comparison, order = ("<", "DESC") if delta < 0 else (">", "ASC")
+            neighbour = conn.execute(
+                f'''SELECT id, "rank" FROM items
+                    WHERE {where} AND "rank" {comparison} ?
+                    ORDER BY "rank" {order} LIMIT 1''',
+                (*params, current),
+            ).fetchone()
+            if neighbour is None:
+                return False
+
+            conn.execute(
+                'UPDATE items SET "rank" = ? WHERE id = ?', (neighbour["rank"], item_id)
+            )
+            conn.execute(
+                'UPDATE items SET "rank" = ? WHERE id = ?', (current, neighbour["id"])
+            )
+        return True
 
     def next_inbox_item(self) -> sqlite3.Row | None:
         """Oldest unclarified item — clarify works FIFO so nothing rots at the

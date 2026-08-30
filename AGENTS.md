@@ -102,8 +102,19 @@ src/gtd/
   `source`.
 - **Timestamps need microsecond precision.** A brain dump creates many items in
   the same second; second-precision timestamps tie and break FIFO ordering.
-- **`app = create_app()` runs at import.** Importing `gtd.web` creates the
-  database file. Harmless (`init_schema` is idempotent) but surprising in tests.
+- **`app = create_app()` runs at import, and that is no longer harmless.**
+  Importing `gtd.web` calls `init_schema()` against whatever `GTD_DB_PATH`
+  resolves to, and it defaults to `gtd.db` *relative to the working directory*.
+  Since `init_schema` now applies migrations (`ALTER TABLE`), not just
+  `CREATE TABLE IF NOT EXISTS`, importing `gtd.web` from the repo root touches
+  the live database. `tests/conftest.py` redirects `GTD_DB_PATH` to a temp file
+  before any test module is imported; do not remove that, and do not assume a
+  script that merely imports `gtd.web` is read-only.
+- **Adding a column means adding a migration.** `CREATE TABLE IF NOT EXISTS` is
+  a no-op on an existing database, so a column added only to `SCHEMA` reaches
+  fresh installs and nothing else. Bump `SCHEMA_VERSION` and add the statement
+  to `MIGRATIONS` in `db.py`, then prove it against a database built at the
+  previous version — see `test_migration_adds_rank_to_an_existing_database`.
 - **launchd + uvicorn don't hot-reload.** After editing a plist or source, you
   must `bootout` then `bootstrap`; `uvicorn` without `--reload` won't see code
   changes.
