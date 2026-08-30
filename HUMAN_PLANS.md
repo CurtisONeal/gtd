@@ -166,6 +166,39 @@ should end up in `ADR.md` when it lands.
 
 ---
 
+## Read API for agents — scoped, not built
+
+**Not needed for the daily brief.** That runs on Octobob with
+`requires_local_device: true`, so it uses `gtd export` and reads the markdown —
+no HTTP, no token, no new surface. See `Daily_Briefing_Agent.md`.
+
+This is only worth building if something must read GTD from a machine that is
+**not** this one.
+
+**Effort: 1-2 sessions.** Not a small addition — the current app has *no* read
+API at all. `POST /api/capture` is the only JSON endpoint and it is write-only;
+every read route returns HTML behind session-cookie auth.
+
+What it would actually take:
+
+| Piece | Notes |
+|---|---|
+| `GET /api/items?state=…` | serialisation, filtering, pagination decisions |
+| `GET /api/projects` | project status + linked actions |
+| Token auth for reads | reuse the capture-token pattern, or a separate read token |
+| Respect `GTD_LOCAL_ONLY` | ADR-010 — the guard must not be weakened for convenience |
+| Tests | route behaviour, auth rejection, and the local-only guard specifically |
+| README + AGENTS updates | the API section currently documents capture only |
+
+**One decision to make first:** whether a read token is the same secret as
+`GTD_CAPTURE_TOKEN` or a separate one. They are different privileges — read
+exposes everything, capture only adds an inbox item — and collapsing them means
+anything that can capture can also read the whole system.
+
+**Note:** `GTD_CAPTURE_TOKEN` exists as an empty line in `.env` today. The
+endpoint is 404 until it has a value. A previous session believed it was
+configured; it is not.
+
 ## Open questions
 
 - **Does the two-minute rule actually get used?** It's implemented as a clarify

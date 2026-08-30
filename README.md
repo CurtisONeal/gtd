@@ -246,8 +246,14 @@ a `--host` change.
 
 `POST /api/capture` accepts `{"title": "...", "notes": "...", "source": "..."}`
 with a `Authorization: Bearer <GTD_CAPTURE_TOKEN>` header. Disabled unless
-`GTD_CAPTURE_TOKEN` is set. Intended for a Discord bot, an email poller, or a
-phone shortcut — so capture never depends on opening the web UI.
+`GTD_CAPTURE_TOKEN` is set — **it is empty today, so this endpoint 404s**.
+Intended for a Discord bot, an email poller, or a phone shortcut — so capture
+never depends on opening the web UI.
+
+**This is the only JSON endpoint, and it is WRITE-ONLY.** There is no read API:
+every read route returns HTML behind session auth. An agent that needs to
+*read* GTD (a briefing, a review, a report) should run `gtd export` and read the
+markdown — see `Daily_Briefing_Agent.md`.
 
 The planned Discord integration lives outside this repo in
 `/Users/s_admin/Documents/agent_set_up/direct_scripts_bot`. That bot currently
@@ -269,6 +275,7 @@ secret belongs in Git.
 | `FIXED_BUGS.md` | Concrete bugs fixed, symptoms, causes, and regression tests |
 | `GTD_METHOD.md` | David Allen GTD method context and how the app maps to it |
 | `HUMAN_PLANS.md` | Scratchpad for ideas, open questions, and what's next |
+| `Daily_Briefing_Agent.md` | **Read this before wiring any agent to GTD data** — there is no read API; use `gtd export` |
 
 ## Security notes
 

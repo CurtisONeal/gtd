@@ -1,7 +1,10 @@
 # AGENTS.md — context for AI coding agents
 
 Read this before changing anything. `ADR.md` has the reasoning behind the
-decisions below; this file is the operating rules. `GTD_METHOD.md` has the
+decisions below; this file is the operating rules. **If you are an agent
+trying to READ GTD data (a briefing, a review, a report), read
+`Daily_Briefing_Agent.md` first — there is no read API, and the obvious
+approach does not work.** `GTD_METHOD.md` has the
 David Allen GTD method context behind the product behavior; read it before
 changing capture, clarify, list organization, project review, or engagement
 behavior.
