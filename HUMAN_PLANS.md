@@ -166,6 +166,78 @@ should end up in `ADR.md` when it lands.
 
 ---
 
+## Ordered lists + Books — specced, decided, not built
+
+Decided 2026-08-30. **All the open questions below are answered** — this is
+ready to build in a fresh session. Sequence it as three commits.
+
+### The shape underneath
+
+Books, Checklists and "Technology Projects" are the same thing: an **ordered,
+categorised, low-ceremony list that sits outside the actionable flow**. Books
+just adds progress fields. Build the shared concept once, specialise it.
+
+### Commit 1 — ordered lists
+
+**Decision: option A.** New `ItemState` value(s) plus nullable columns on
+`items`. Not a separate table.
+
+Rationale: keeps ADR-001 intact ("adding a list means adding an enum value"),
+keeps these items inside the one system, and a few nullable columns is a
+smaller cost than a parallel world that cannot reach contexts, dependencies or
+the clarify flow. Record this in ADR.md when built.
+
+What "ordered" needs that items lack: a **rank within a category**, distinct
+from `priority` (which is P1-P3 importance, not sequence).
+
+### Commit 2 — Books, specialising the above
+
+**Fields:**
+
+| Field | Notes |
+|---|---|
+| `book_category` | **new concept, not `areas`** — fiction / graphic novel / general non-fiction / technology. Areas are life areas (Personal, Work, Health…); this is a book taxonomy and mixing them would muddy both. |
+| started | boolean |
+| `started_on` | rough date, only meaningful when started |
+| `percent_complete` | **buckets: 0 / 25 / 33 / 50 / 66 / 75 / 100.** Not freeform — "estimate" is the point, and a text box invites fiddling. 33 and 66 are wanted (thirds get used in practice). |
+| `is_audio` | boolean. Currently far more fiction is listened to than read, and that is worth being able to see and filter. |
+| rank | **per category** — each category orders independently. |
+
+**Behaviour:**
+
+- **Category reordering is TRANSIENT** — a UI sorting view, "bring this
+  category to the top so I can work on it". It does **not** persist, so
+  categories need no stored `sort_order` and there is no reorder-and-save UI.
+  Cheapest correct version.
+- **Finishing moves the book to `done`**, like anything else. It leaves the
+  reading page.
+- **Books do NOT generate next actions.** If a book needs an action
+  ("finish ch. 3"), that gets captured as an ordinary task through the normal
+  flow. No dependency machinery, no project linkage. This keeps the feature
+  small and is the main reason it is one session rather than three.
+
+### Commit 3 — Checklists + Technology Projects
+
+Both reuse the ordered-list concept and should be nearly free once it exists.
+
+- **Checklists** — recurring reference sets: what to take to work, to the dojo,
+  what to consider when building a Magic deck.
+- **Technology Projects** — a deliberately uncomplicated re-orderable dump
+  list. No project ceremony.
+
+**One open question, not yet answered:** checklists are *run repeatedly* — you
+tick items off packing a bag, then need them all back for next time. Books are
+never reset. So checklists may need a reset action, or to be read-only
+templates that are never ticked at all. **Decide this before building commit 3**;
+it is the one place the shared concept might not stretch.
+
+### Not in this work
+
+**Recurring tasks** (take medication, verbally express appreciation for family)
+are a genuinely different feature — repeat rules and generating the next
+occurrence, touching the tickler/`defer_until` logic. **Its own session and
+commit.** Do not fold it in.
+
 ## Read API for agents — scoped, not built
 
 **Not needed for the daily brief.** That runs on Octobob with
