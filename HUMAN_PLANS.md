@@ -225,11 +225,51 @@ Both reuse the ordered-list concept and should be nearly free once it exists.
 - **Technology Projects** — a deliberately uncomplicated re-orderable dump
   list. No project ceremony.
 
-**One open question, not yet answered:** checklists are *run repeatedly* — you
-tick items off packing a bag, then need them all back for next time. Books are
-never reset. So checklists may need a reset action, or to be read-only
-templates that are never ticked at all. **Decide this before building commit 3**;
-it is the one place the shared concept might not stretch.
+**Resolved 2026-08-30 — checklists are ticked in place, and have two kinds.**
+
+A checklist is `evergreen` true/false, and the flag decides its terminal action:
+
+| Kind | Example | Terminal action |
+|---|---|---|
+| Evergreen | "Go to work", dojo bag, Magic deck considerations | **Reset** — clears the tick boxes and nothing else. Items, order and category stay put. The checklist never completes. |
+| One-off | "Build the IKEA shelves" | **Complete** — the checklist goes to done and leaves the page. Never reset. |
+
+Both are POST-redirect-GET actions on the checklist page, consistent with the
+no-JS UI style.
+
+Ticking is a checklist-local boolean, **not** `done` state. A ticked checklist
+item must not move to the Done list the way a finished book does, or reset would
+have to resurrect items out of `done`.
+
+**Consequence for commit 1 — checklists need a table.** `evergreen`, and the
+completed state of a one-off, are properties of *the checklist as a whole*, not
+of its items. The current spec has no row for "the checklist" — categories were
+going to be a plain text field on items, like `book_category`. Denormalising
+`evergreen` onto every item is a bug farm: it must stay consistent across rows,
+flipping it becomes a multi-row update, and an empty checklist cannot exist
+because it has no row to carry the flag.
+
+So: a small `checklists` table (`id`, `name`, `evergreen`, `status`,
+`completed_at`, `created_at`), with items carrying `checklist_id` + rank. This
+mirrors `projects` and does **not** violate ADR-001 — that ADR is about *lists*
+being states of `items`; containers already get their own tables (`areas`,
+`contexts`, `projects`). Books are unaffected: `book_category` genuinely is a
+taxonomy, not a container.
+
+**Known method drift, accepted deliberately.** A one-off checklist is, in GTD
+terms, a project — a multi-step outcome finished once. This app already has
+projects with a status and linked actions. The trade is the same one already
+made for "Technology Projects": buying a low-ceremony container that skips
+outcome / area / review_date. Consequences to keep in view:
+
+- There will be two valid ways to represent "build the shelves".
+- The Weekly Review flow will have to decide whether one-off checklists are
+  reviewed as projects. Decide that *there*, not here.
+
+**Completion is manual.** A one-off does not complete itself when its last item
+is ticked; the page says all items are ticked and the human presses Complete.
+Auto-completing on a tick is surprising and awkward to undo after a mis-tick,
+and "disclose, don't hide" favours saying so over acting silently.
 
 ### Not in this work
 
