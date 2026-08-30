@@ -163,6 +163,14 @@ should end up in `ADR.md` when it lands.
 - 2026-08-28 — **Phone joined the tailnet.** The phone can reach the personal
   GTD instance through Tailscale at
   `http://octobobs-mac-mini.tail7ccdf0.ts.net:8765`.
+- 2026-08-30 — **Ordered lists (commit 1) and Books (commit 2).** `items.rank`
+  as sequence within a group, and `/books` grouped by category with progress
+  buckets. See ADR-012. Two things the spec had not anticipated and which are
+  now fixed: schema bumps were silent no-ops (there was no migration mechanism
+  at all), and running the test suite from the repo root mutated the live
+  database, because importing `gtd.web` runs `create_app()` and `GTD_DB_PATH`
+  defaults to `./gtd.db`. Commit 3 (Checklists + Technology Projects) is the
+  remaining piece.
 
 ---
 

@@ -9,7 +9,7 @@ import sqlite3
 
 import pytest
 
-from gtd.db import SCHEMA, Database
+from gtd.db import MIGRATIONS, SCHEMA, SCHEMA_VERSION, Database
 from gtd.models import ItemState
 from gtd.store import Store
 
@@ -102,18 +102,51 @@ def test_invalid_delta_is_rejected(store):
         store.move_in_order(item_id, 2)
 
 
-def test_migration_adds_rank_to_an_existing_database(tmp_path):
+def _columns_added_after(version: int) -> set[str]:
+    """Column names that migrations later than `version` introduce."""
+    return {
+        statement.split("ADD COLUMN")[1].split()[0]
+        for later, statements in MIGRATIONS.items()
+        if later > version
+        for statement in statements
+        if "ADD COLUMN" in statement
+    }
+
+
+def _schema_at(version: int) -> str:
+    """Today's schema with every later-added column removed.
+
+    Derived from MIGRATIONS rather than hardcoded, so adding a migration keeps
+    these tests honest instead of quietly making them test nothing.
+    """
+    added = _columns_added_after(version)
+    kept = [
+        line
+        for line in SCHEMA.splitlines()
+        if line.strip().split(" ")[0] not in added
+    ]
+    return "\n".join(kept)
+
+
+@pytest.mark.parametrize("from_version", sorted(MIGRATIONS))
+def test_migrating_from_each_previous_version_reaches_existing_data(tmp_path, from_version):
     """A schema bump that only moves the version number is a silent no-op:
     CREATE TABLE IF NOT EXISTS will not add a column to a table that exists.
-    This encodes that the v2 -> v3 upgrade actually reaches real data.
+
+    Encodes that every upgrade path actually alters a real database that was
+    built at the older version, with rows already in it.
     """
-    path = tmp_path / "legacy.db"
-    v2_schema = "\n".join(line for line in SCHEMA.splitlines() if "rank" not in line)
-    assert "rank" not in v2_schema
+    start = from_version - 1
+    path = tmp_path / f"v{start}.db"
+    old_schema = _schema_at(start)
+    expected = _columns_added_after(start)
+    assert expected, "nothing to migrate — the fixture would prove nothing"
+    for column in expected:
+        assert column not in old_schema
 
     conn = sqlite3.connect(path)
-    conn.executescript(v2_schema)
-    conn.execute("INSERT INTO schema_version (version) VALUES (2)")
+    conn.executescript(old_schema)
+    conn.execute("INSERT INTO schema_version (version) VALUES (?)", (start,))
     conn.execute(
         "INSERT INTO items (title, created_at, updated_at) VALUES (?, ?, ?)",
         ("pre-existing", "2026-01-01", "2026-01-01"),
@@ -125,12 +158,12 @@ def test_migration_adds_rank_to_an_existing_database(tmp_path):
 
     conn = sqlite3.connect(path)
     columns = {row[1] for row in conn.execute("PRAGMA table_info(items)")}
-    assert "rank" in columns
+    assert expected <= columns
     assert conn.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 1
 
     # Idempotent: startup runs this on every boot.
     Database(path).init_schema(seed_defaults=False)
-    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == 3
+    assert conn.execute("SELECT version FROM schema_version").fetchone()[0] == SCHEMA_VERSION
 
 
 def test_ordered_list_ignores_items_in_other_states(store):

@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -73,6 +73,12 @@ CREATE TABLE IF NOT EXISTS items (
     waiting_on        TEXT,   -- who, when state = waiting_for
     rank              INTEGER,-- sequence within an ordered list; NOT priority
     source            TEXT NOT NULL DEFAULT 'web',
+    -- Books. Null on everything else; only meaningful when state = 'book'.
+    book_category     TEXT,   -- a reading taxonomy, not an area of focus
+    started           INTEGER NOT NULL DEFAULT 0,
+    started_on        TEXT,   -- rough ISO date, only meaningful when started
+    percent_complete  INTEGER,-- one of PERCENT_BUCKETS
+    is_audio          INTEGER NOT NULL DEFAULT 0,
     created_at        TEXT NOT NULL,
     updated_at        TEXT NOT NULL,
     completed_at      TEXT
@@ -106,6 +112,13 @@ CREATE INDEX IF NOT EXISTS idx_item_dependencies_prerequisite
 # while still missing the column.
 MIGRATIONS: dict[int, tuple[str, ...]] = {
     3: ("ALTER TABLE items ADD COLUMN rank INTEGER",),
+    4: (
+        "ALTER TABLE items ADD COLUMN book_category TEXT",
+        "ALTER TABLE items ADD COLUMN started INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE items ADD COLUMN started_on TEXT",
+        "ALTER TABLE items ADD COLUMN percent_complete INTEGER",
+        "ALTER TABLE items ADD COLUMN is_audio INTEGER NOT NULL DEFAULT 0",
+    ),
 }
 
 

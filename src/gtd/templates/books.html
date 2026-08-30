@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Books — GTD{% endblock %}
+{% block content %}
+
+{% set total = books_by_category.values()|map('length')|sum %}
+<h1>Books</h1>
+<p class="sub">
+  {{ total }} book{{ '' if total == 1 else 's' }} on the go.
+  Finishing one completes it, so it leaves this page.
+</p>
+
+<details class="card">
+  <summary><strong>Add a book</strong></summary>
+  <form method="post" action="/books/add">
+    <label for="add_title">Title</label>
+    <input type="text" id="add_title" name="title" required>
+
+    <div class="field-row">
+      <div>
+        <label for="add_category">Category</label>
+        <select id="add_category" name="book_category" required>
+          {% for c in categories %}
+          <option value="{{ c }}" {% if c == top %}selected{% endif %}>{{ category_labels[c] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="add_audio">Format</label>
+        <label><input type="checkbox" id="add_audio" name="is_audio" value="1"> Audiobook</label>
+      </div>
+      <div>
+        <label for="add_started">Progress</label>
+        <label><input type="checkbox" id="add_started" name="started" value="1"> Already started</label>
+      </div>
+    </div>
+
+    <div class="actions"><button type="submit" class="primary">Add</button></div>
+  </form>
+</details>
+
+<p class="sub">
+  {% if top %}
+    Showing <strong>{{ category_labels[top] }}</strong> first. <a href="/books">Reset order</a>
+  {% else %}
+    Bring a shelf to the top:
+    {% for c in categories %}<a href="/books?top={{ c }}">{{ category_labels[c] }}</a>{{ ", " if not loop.last }}{% endfor %}
+  {% endif %}
+  <span class="hint">— this ordering is not saved</span>
+</p>
+
+{% for category in categories %}
+{% set shelf = books_by_category.get(category, []) %}
+<h2>{{ category_labels[category] }} <span class="badge quiet">{{ shelf|length }}</span></h2>
+
+{% if not shelf %}
+  <p class="empty">Nothing here.</p>
+{% else %}
+<div class="card">
+  {% for book in shelf %}
+  <div class="item">
+    <form method="post" action="/books/{{ book.id }}/move" class="inline-form">
+      <input type="hidden" name="delta" value="-1">
+      <input type="hidden" name="top" value="{{ top }}">
+      <button type="submit" class="linkish" title="Move up" {% if loop.first %}disabled{% endif %}>↑</button>
+    </form>
+    <form method="post" action="/books/{{ book.id }}/move" class="inline-form">
+      <input type="hidden" name="delta" value="1">
+      <input type="hidden" name="top" value="{{ top }}">
+      <button type="submit" class="linkish" title="Move down" {% if loop.last %}disabled{% endif %}>↓</button>
+    </form>
+
+    <div class="item-body">
+      <div class="item-title">{{ book.title }}</div>
+      <div class="meta">
+        {% if book.is_audio %}<span>audio</span>{% endif %}
+        {% if book.started %}
+          <span>{{ book.percent_complete or 0 }}%</span>
+          {% if book.started_on %}<span>started {{ book.started_on }}</span>{% endif %}
+        {% else %}
+          <span>not started</span>
+        {% endif %}
+      </div>
+
+      <form method="post" action="/books/{{ book.id }}/progress" class="inline-form">
+        <input type="hidden" name="top" value="{{ top }}">
+        <label><input type="checkbox" name="started" value="1" {% if book.started %}checked{% endif %}> started</label>
+        <label><input type="checkbox" name="is_audio" value="1" {% if book.is_audio %}checked{% endif %}> audio</label>
+        <select name="percent_complete" aria-label="Progress">
+          {% for bucket in percent_buckets %}
+          <option value="{{ bucket }}" {% if bucket == (book.percent_complete or 0) %}selected{% endif %}>{{ bucket }}%</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="linkish">Save</button>
+      </form>
+    </div>
+
+    <form method="post" action="/books/{{ book.id }}/finish" class="inline-form">
+      <button type="submit" class="linkish" title="Finished — completes the book">✓</button>
+    </form>
+
+    <a class="btn linkish" href="/items/{{ book.id }}/edit?back=/books" title="Edit">✎</a>
+
+    <form method="post" action="/items/{{ book.id }}/delete" class="inline-form">
+      <input type="hidden" name="back" value="/books">
+      <button type="submit" class="linkish" title="Move to trash">✕</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endfor %}
+
+{% endblock %}

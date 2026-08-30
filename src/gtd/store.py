@@ -25,9 +25,8 @@ def _today() -> str:
 
 
 # Columns an ordered list may be grouped by. Whitelisted because the name is
-# interpolated into SQL as a column. Empty until the first feature that ranks
-# within something narrower than a state (Books, by category).
-RANK_GROUPS: frozenset[str] = frozenset()
+# interpolated into SQL as a column name, which parameter binding cannot do.
+RANK_GROUPS: frozenset[str] = frozenset({"book_category"})
 
 
 def _clean(value: Any) -> Any:
@@ -83,6 +82,7 @@ class Store:
             "title", "notes", "state", "project_id", "context_id", "area_id",
             "energy", "time_estimate_min", "priority", "due_date", "defer_until",
             "waiting_on", "rank", "source",
+            "book_category", "started", "started_on", "percent_complete", "is_audio",
         }
         unknown = set(fields) - allowed
         if unknown:
@@ -94,13 +94,24 @@ class Store:
         # NULL rather than '' so "unset" is genuinely unset.
         not_null = {"title", "notes", "state", "source"}
 
+        # NOT NULL integer flags. Without this `_clean` would turn a blank form
+        # value into NULL and violate the constraint — the same shape of bug as
+        # the empty-string-into-a-NOT-NULL-text-column one above. An unchecked
+        # checkbox sends nothing at all, and "absent" must mean false, not null.
+        boolean = {"started", "is_audio"}
+
         if "title" in fields and not str(fields["title"]).strip():
             raise ValueError("title cannot be empty")
 
         sets = ", ".join(f"{k} = ?" for k in fields)
-        values = [
-            (str(v).strip() if k in not_null else _clean(v)) for k, v in fields.items()
-        ]
+        values = []
+        for k, v in fields.items():
+            if k in not_null:
+                values.append(str(v).strip())
+            elif k in boolean:
+                values.append(1 if _clean(v) else 0)
+            else:
+                values.append(_clean(v))
         with self.db.connect() as conn:
             conn.execute(
                 f"UPDATE items SET {sets}, updated_at = ? WHERE id = ?",
@@ -356,6 +367,77 @@ class Store:
                 'UPDATE items SET "rank" = ? WHERE id = ?', (current, neighbour["id"])
             )
         return True
+
+    # ── Books ────────────────────────────────────────────────────────────────
+    #
+    # Books are an ordered list specialised with progress fields. They rank
+    # within their category, and each category orders independently.
+    #
+    # Books deliberately do NOT generate next actions or link to projects. If a
+    # book needs an action ("finish ch. 3"), that is captured as an ordinary
+    # task through the normal flow. Keeping the two apart is what makes this a
+    # small feature rather than a second project system.
+
+    def add_book(
+        self,
+        title: str,
+        *,
+        book_category: str,
+        is_audio: bool = False,
+        started: bool = False,
+    ) -> int:
+        """Add a book to the end of its category."""
+        return self.append_to_ordered(
+            title,
+            ItemState.BOOK,
+            group="book_category",
+            book_category=str(book_category),
+            is_audio=1 if is_audio else 0,
+            started=1 if started else 0,
+            started_on=_today() if started else None,
+            percent_complete=0,
+        )
+
+    def list_books(self) -> list[sqlite3.Row]:
+        """Every unfinished book, in category then rank order.
+
+        Finished books are gone from here — completing moves them to `done` like
+        anything else, so the reading page shows only what is actually live.
+        """
+        with self.db.connect() as conn:
+            return conn.execute(
+                """SELECT * FROM items WHERE state = ?
+                   ORDER BY book_category ASC,
+                            CASE WHEN "rank" IS NULL THEN 1 ELSE 0 END, "rank" ASC,
+                            created_at ASC, id ASC""",
+                (str(ItemState.BOOK),),
+            ).fetchall()
+
+    def set_book_progress(
+        self,
+        item_id: int,
+        *,
+        percent_complete: int | None = None,
+        started: bool | None = None,
+        is_audio: bool | None = None,
+    ) -> None:
+        """Update progress fields, leaving anything not passed alone."""
+        fields: dict[str, Any] = {}
+        if percent_complete is not None:
+            fields["percent_complete"] = int(percent_complete)
+        if is_audio is not None:
+            fields["is_audio"] = 1 if is_audio else 0
+        if started is not None:
+            fields["started"] = 1 if started else 0
+            # A start date is only meaningful while started; un-starting clears
+            # it rather than leaving a date that contradicts the flag.
+            existing = self.get_item(item_id)
+            if started and not (existing and existing["started_on"]):
+                fields["started_on"] = _today()
+            elif not started:
+                fields["started_on"] = None
+        if fields:
+            self.update_item(item_id, **fields)
 
     def next_inbox_item(self) -> sqlite3.Row | None:
         """Oldest unclarified item — clarify works FIFO so nothing rots at the

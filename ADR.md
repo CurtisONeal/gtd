@@ -308,3 +308,55 @@ links.
   as evidence that an active project has movement defined.
 - If future review UX is added, it should surface auto-unblocked items clearly
   rather than making the user wonder why something reappeared.
+
+## ADR-012: Ordered lists are a state plus a rank, not a parallel structure
+
+**Status:** Accepted
+
+**Context.** Books, checklists and "technology projects" are the same shape: an
+ordered, categorised, low-ceremony list that sits *outside* the actionable flow.
+None of them are next actions, and none should generate any. The question was
+whether they belong in `items` at all, or in a structure of their own. What they
+need that items lacked is a *sequence* — and `priority` is not it. Priority is
+P1-P3 importance and sorts every list the same way; sequence only means anything
+relative to neighbours inside one group.
+
+**Decision.** Add a new `ItemState` value plus nullable columns on `items`,
+rather than a separate table. Rank is an integer scoped to a group; the grouping
+column varies per feature (books rank within `book_category`), so it is a
+whitelisted parameter rather than baked in. Books add progress fields:
+`book_category`, `started`, `started_on`, bucketed `percent_complete`, and
+`is_audio`. Finishing a book completes it like anything else.
+
+**Evaluation.**
+- Keeps ADR-001 intact: adding a list means adding an enum value, not a table.
+  A few nullable columns is a smaller cost than a parallel world that cannot
+  reach contexts, dependencies or the clarify flow.
+- `book_category` is deliberately **not** an area of focus. Areas are life areas
+  (Personal, Work, Health); this is a reading taxonomy, and mixing them would
+  muddy both.
+- Progress is a bucket, not a free number. The point is an estimate, and a text
+  box invites fiddling with a figure nobody can know. Thirds are included
+  because they get used in practice — the same reasoning as ADR-005.
+- Books deliberately do **not** generate next actions or link to projects. If a
+  book needs an action, it is captured as an ordinary task. This is the main
+  reason the feature is small.
+- Category reordering is transient — a "bring this shelf to the top" view, not a
+  stored preference. Nothing about it is persisted, so no reorder-and-save UI
+  and no `sort_order` on categories.
+
+**Consequences.**
+- `items` grows columns meaningful only for one state. That is the accepted cost
+  of keeping one table; the alternative was a second system.
+- Ranks are guaranteed ordered but **not** contiguous, so adjacency must be
+  found by comparison rather than `rank ± 1`. Deleting a row leaves a gap by
+  design.
+- Items that arrive unranked sort last and materialise a rank on first move,
+  so data predating the feature stays usable.
+- Schema changes now require a migration, not just an edit to `SCHEMA` —
+  `CREATE TABLE IF NOT EXISTS` cannot add a column to an existing table. See
+  `MIGRATIONS` in `db.py`.
+- Checklists will need a container table for `evergreen` and one-off
+  completion, since those are properties of the list rather than its items.
+  That does not contradict this ADR: containers (`areas`, `contexts`,
+  `projects`) already have tables; what stays in `items` is the membership.

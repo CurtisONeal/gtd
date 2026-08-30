@@ -23,7 +23,7 @@ cd ~/dev/gtd
 uv run gtd init-db
 
 # 2. Set your login (you choose the password; only its hash is stored)
-uv run gtd set-password
+sΩ`
 
 # 3. Run it
 uv run uvicorn gtd.web:app --port 8765
@@ -76,6 +76,26 @@ only route: each of Next Actions, Waiting For, Someday and Reference has an
 "Add directly to…" form for when you already know where something belongs, and
 the edit page can move any item to any list. Done and Trash have no add form —
 they are outcomes, not destinations.
+
+## Books
+
+`/books` is an *ordered* list rather than an actionable one. Books are grouped
+by category — fiction, graphic novels, general non-fiction, technology — and
+ranked within each, independently. Each book carries whether it's started (and
+roughly when), a bucketed percentage, and whether it's an audiobook.
+
+Three things are deliberate:
+
+- **Books never generate next actions.** If a book needs one ("finish ch. 3"),
+  capture it as an ordinary task. There is no project linkage and no dependency
+  machinery.
+- **Progress is a bucket** (0 / 25 / 33 / 50 / 66 / 75 / 100), not a free
+  number. It's an estimate; a text box would only invite fiddling.
+- **Floating a category to the top is transient.** It's a "work on this shelf
+  now" view, not a stored preference — nothing about it persists.
+
+Finishing a book completes it like anything else, so it leaves the page rather
+than sitting at 100%. See ADR-012.
 
 ## CLI
 

@@ -21,13 +21,46 @@ class ItemState(StrEnum):
     WAITING_FOR = "waiting_for"   # delegated — tracked by `waiting_on`
     SOMEDAY = "someday"           # incubated, reviewed periodically
     REFERENCE = "reference"       # not actionable, worth keeping
+    BOOK = "book"                 # ordered, ranked within a category — see /books
     DONE = "done"
     TRASHED = "trashed"           # soft delete, recoverable
 
     @classmethod
     def user_lists(cls) -> tuple["ItemState", ...]:
-        """States a user browses as a list page (excludes done/trashed)."""
+        """States a user browses as a generic list page (excludes done/trashed).
+
+        BOOK is deliberately absent: it is ordered and grouped, so it has its own
+        page rather than rendering through the generic list template.
+        """
         return (cls.INBOX, cls.NEXT_ACTION, cls.WAITING_FOR, cls.SOMEDAY, cls.REFERENCE)
+
+
+class BookCategory(StrEnum):
+    """A book taxonomy, deliberately NOT an area of focus.
+
+    Areas are life areas (Personal, Work, Health). Mixing a reading taxonomy
+    into them would muddy both — a technology book is not a life area, and
+    "Health" is not a shelf.
+    """
+
+    FICTION = "fiction"
+    GRAPHIC_NOVEL = "graphic_novel"
+    NONFICTION = "nonfiction"
+    TECHNOLOGY = "technology"
+
+
+BOOK_CATEGORY_LABELS: dict[str, str] = {
+    BookCategory.FICTION: "Fiction",
+    BookCategory.GRAPHIC_NOVEL: "Graphic Novels",
+    BookCategory.NONFICTION: "General Non-fiction",
+    BookCategory.TECHNOLOGY: "Technology",
+}
+
+
+# Progress as pickable buckets, not a free number. The point is an estimate —
+# a text box invites fiddling with a figure nobody can actually know. Thirds are
+# included because they get used in practice.
+PERCENT_BUCKETS: tuple[int, ...] = (0, 25, 33, 50, 66, 75, 100)
 
 
 class Energy(StrEnum):
@@ -82,6 +115,7 @@ STATE_LABELS: dict[str, str] = {
     ItemState.WAITING_FOR: "Waiting For",
     ItemState.SOMEDAY: "Someday / Maybe",
     ItemState.REFERENCE: "Reference",
+    ItemState.BOOK: "Books",
     ItemState.DONE: "Done",
     ItemState.TRASHED: "Trash",
 }

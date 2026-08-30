@@ -28,7 +28,15 @@ from .auth import SESSION_USER_KEY, LoginRateLimiter, verify_password
 from .config import Settings, load_settings
 from .db import Database
 from .export import export_all
-from .models import STATE_LABELS, TIME_ESTIMATES, ItemState, Source
+from .models import (
+    BOOK_CATEGORY_LABELS,
+    PERCENT_BUCKETS,
+    STATE_LABELS,
+    TIME_ESTIMATES,
+    BookCategory,
+    ItemState,
+    Source,
+)
 from .store import Store
 
 HERE = Path(__file__).resolve().parent
@@ -351,6 +359,88 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # ── Lists ────────────────────────────────────────────────────────────────
 
+    # ── Books ────────────────────────────────────────────────────────────────
+
+    @app.get("/books", response_class=HTMLResponse)
+    def books(request: Request, top: str = ""):
+        """The reading page: books grouped by category, ranked within each.
+
+        `top` floats one category to the front. That ordering is deliberately
+        transient — a way to say "I want to work on this shelf now", not a
+        preference worth storing. Nothing about it is persisted.
+        """
+        by_category: dict[str, list[Any]] = {str(c): [] for c in BookCategory}
+        for book in store.list_books():
+            by_category.setdefault(book["book_category"] or "", []).append(book)
+
+        order = [str(c) for c in BookCategory]
+        if top in order:
+            order.remove(top)
+            order.insert(0, top)
+
+        return render(
+            request,
+            "books.html",
+            categories=order,
+            category_labels=BOOK_CATEGORY_LABELS,
+            books_by_category=by_category,
+            percent_buckets=PERCENT_BUCKETS,
+            top=top,
+        )
+
+    @app.post("/books/add")
+    def books_add(
+        title: str = Form(...),
+        book_category: str = Form(...),
+        is_audio: str = Form(""),
+        started: str = Form(""),
+    ):
+        if book_category not in {str(c) for c in BookCategory}:
+            return RedirectResponse("/books", status_code=303)
+        store.add_book(
+            title,
+            book_category=book_category,
+            is_audio=bool(is_audio),
+            started=bool(started),
+        )
+        return RedirectResponse("/books", status_code=303)
+
+    @app.post("/books/{item_id}/move")
+    def books_move(item_id: int, delta: int = Form(...), top: str = Form("")):
+        """Reorder within the book's own category — each shelf orders alone."""
+        if delta in (-1, 1):
+            store.move_in_order(item_id, delta, group="book_category")
+        suffix = f"?top={top}" if top else ""
+        return RedirectResponse(f"/books{suffix}", status_code=303)
+
+    @app.post("/books/{item_id}/progress")
+    def books_progress(
+        item_id: int,
+        percent_complete: str = Form(""),
+        started: str = Form(""),
+        is_audio: str = Form(""),
+        top: str = Form(""),
+    ):
+        percent = _int_or_none(percent_complete)
+        if percent is not None and percent not in PERCENT_BUCKETS:
+            percent = None
+        store.set_book_progress(
+            item_id,
+            percent_complete=percent,
+            started=bool(started),
+            is_audio=bool(is_audio),
+        )
+        suffix = f"?top={top}" if top else ""
+        return RedirectResponse(f"/books{suffix}", status_code=303)
+
+    @app.post("/books/{item_id}/finish")
+    def books_finish(item_id: int):
+        """Finishing a book completes it like anything else, so it leaves the
+        reading page rather than lingering at 100%."""
+        store.update_item(item_id, percent_complete=100)
+        store.complete(item_id)
+        return RedirectResponse("/books", status_code=303)
+
     @app.get("/list/{state}", response_class=HTMLResponse)
     def list_state(
         request: Request,
@@ -359,6 +449,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         context_id: str = "",
         area_id: str = "",
     ):
+        if state == ItemState.BOOK:
+            # Books are ordered and grouped; the generic list page cannot show
+            # either, so send them to the page that can.
+            return RedirectResponse("/books", status_code=303)
         if state not in {str(s) for s in ItemState}:
             return RedirectResponse("/", status_code=303)
 

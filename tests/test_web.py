@@ -7,35 +7,9 @@ from gtd.models import ItemState
 from gtd.store import Store
 from gtd.web import create_app
 
-PASSWORD = "a-sufficiently-long-password"
-
-
-@pytest.fixture
-def settings(tmp_path):
-    return Settings(
-        db_path=tmp_path / "web.db",
-        export_dir=tmp_path / "exports",
-        session_secret="test-secret-not-used-anywhere-real",
-        secure_cookies=False,
-        session_max_age=3600,
-        capture_token="test-capture-token",
-        local_only=False,
-        host="127.0.0.1",
-        port=8765,
-    )
-
-
-@pytest.fixture
-def app(settings):
-    application = create_app(settings)
-    store: Store = application.state.store
-    store.upsert_user("curtis", hash_password(PASSWORD))
-    return application
-
-
-@pytest.fixture
-def client(app):
-    return TestClient(app)
+# `settings`, `app`, `client` and PASSWORD live in conftest.py so the books and
+# web suites share one definition.
+from conftest import PASSWORD  # noqa: F401
 
 
 @pytest.fixture
