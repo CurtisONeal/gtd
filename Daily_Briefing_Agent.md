@@ -10,14 +10,24 @@ obvious from outside the repo.
 
 ## The short version
 
-**Do not try to reach GTD over HTTP. Run `gtd export` and read the markdown.**
+**Do not try to reach GTD over HTTP. Run `gtd export`, refresh the vault
+mirror, and read from there.**
 
 ```bash
-cd /Users/s_admin/dev/gtd && .venv/bin/gtd export
-# then read exports/*.md
+cd /Users/s_admin/dev/gtd && .venv/bin/gtd export \
+  && cp exports/*.md exports/_manifest.json \
+     ~/Documents/obsidian_vault/syncing_vault2_clean_2026/050_daily_operations/gtd_exports/
+# then read the vault copy — ONE source, see "Two copies exist" below
 ```
 
 No token, no auth, no network call, no new endpoints. Takes well under a second.
+
+Reading the vault copy rather than `exports/` directly is deliberate: you can
+already see Obsidian, and refreshing the mirror as part of the brief keeps it
+current for a human too instead of letting it drift.
+
+**The `&&` matters.** If the export fails the copy must not run — otherwise a
+good mirror gets overwritten with nothing, or worse, half of something.
 
 ---
 
@@ -78,7 +88,7 @@ the trigger while the session is linked to Octobob is the way to bind it.
 
 ## What the export actually gives you
 
-`gtd export` writes six files to `exports/` (path from `GTD_EXPORT_DIR`):
+`gtd export` writes seven files to `exports/` (path from `GTD_EXPORT_DIR`):
 
 | File | Contents |
 |---|---|
@@ -87,7 +97,8 @@ the trigger while the session is linked to Octobob is the way to bind it.
 | `waiting_for.md` | delegated / blocked, with `waiting on …` |
 | `someday.md` | someday-maybe |
 | `reference.md` | reference material |
-| `projects.md` | projects and their status |
+| `projects.md` | projects, incl. **⚠ Stalled** (no next action) |
+| `_manifest.json` | freshness + counts — **check this first** |
 
 Real sample (`next_action.md`):
 
@@ -111,30 +122,64 @@ compare dates itself, and cannot get that comparison wrong.
 
 ---
 
-## Freshness — the one real gotcha
+## Freshness — check it, do not assume it
 
 **The export is a snapshot, not a live view.** Files reflect the moment
 `gtd export` last ran. A brief that reads stale files reports yesterday's list
-with total confidence.
+with total confidence — the failure is silent and looks exactly like success.
 
-**Always run `gtd export` immediately before reading, in the same run.** Do not
-depend on a separately-scheduled export, and do not assume the files are
-current because they exist.
+**Always run `gtd export` in the same run that reads it.** Never depend on a
+separately-scheduled export, and never assume files are current because they
+exist.
+
+**Then verify rather than trusting the sequencing.** Every export carries a
+machine-readable timestamp, and `_manifest.json` collects them in one place:
+
+```json
+{
+  "generated_at": "2026-08-30T17:39:36-04:00",
+  "files": ["inbox.md", "next_action.md", "..."],
+  "counts": {"inbox": 2, "next_action": 17, "waiting_for": 2}
+}
+```
+
+Each `.md` file also carries its own marker, so a single file is
+self-describing even if separated from the manifest:
+
+```
+<!-- generated_at: 2026-08-30T17:39:36-04:00 -->
+```
+
+**Before rendering the brief: parse `generated_at`, and abort if it is more
+than a few minutes old.** Say the export is stale rather than producing a
+confident brief from old data. Timestamps carry a UTC offset so this works
+regardless of which machine reads them.
+
+`_manifest.json` is written **last**, so a partially-written export leaves the
+manifest absent or older than the files — a reader that checks it fails closed
+rather than treating a half-written set as current.
 
 ---
 
-## Vault copy
+## Two copies exist — do not double-count
 
-A copy is mirrored to:
+There are two sets of the same files:
 
 ```
-~/Documents/obsidian_vault/syncing_vault2_clean_2026/050_daily_operations/gtd_exports/
+~/dev/gtd/exports/                                     ← written by `gtd export`
+…/050_daily_operations/gtd_exports/                    ← the vault mirror
 ```
 
-**That mirror is manual and goes stale silently** — nothing syncs it. It exists
-so the lists are readable in Obsidian, not as a data source for the brief. The
-brief should read `~/dev/gtd/exports/` directly after running the export
-itself.
+**They are the same lists, not two sources.** Read exactly one — the vault copy,
+per the command above. Reading both and merging produces a brief that reports
+every task twice, and because the content is genuinely identical the duplication
+looks like real duplicate tasks in GTD rather than a bug in the brief.
+
+If the two disagree, the mirror is stale and the fix is to re-run the
+export-and-copy, never to reconcile them by hand.
+
+Nothing syncs the mirror automatically; the `&&` chain above is what keeps it
+current.
 
 ---
 

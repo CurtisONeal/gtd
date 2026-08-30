@@ -8,6 +8,7 @@ anything else needing to speak SQLite.
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import date, datetime
 from pathlib import Path
@@ -63,6 +64,13 @@ def render_list(state: str, rows: list[sqlite3.Row]) -> str:
         f"_{len(rows)} item{'s' if len(rows) != 1 else ''} — generated "
         f"{datetime.now().strftime('%Y-%m-%d %H:%M')}_",
         "",
+        # Machine-readable alongside the human line above. An agent reading a
+        # copy of this file (the Obsidian mirror, say) cannot tell from the
+        # content alone whether it is current — and a brief built on a stale
+        # export reports yesterday's list with full confidence. This lets it
+        # compute the age and refuse, rather than guess.
+        f"<!-- generated_at: {datetime.now().astimezone().isoformat(timespec='seconds')} -->",
+        "",
     ]
     if not rows:
         lines.append("_Nothing here._")
@@ -85,6 +93,8 @@ def render_projects(rows: list[sqlite3.Row]) -> str:
         "# Projects",
         "",
         f"_{len(rows)} active — generated {datetime.now().strftime('%Y-%m-%d %H:%M')}_",
+        "",
+        f"<!-- generated_at: {datetime.now().astimezone().isoformat(timespec='seconds')} -->",
         "",
     ]
     if not rows:
@@ -120,15 +130,36 @@ def export_all(store: Store, export_dir: Path) -> list[Path]:
     """Write every list plus projects. Returns the paths written."""
     export_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
+    counts: dict[str, int] = {}
 
     for state in EXPORTED_STATES:
         rows = store.list_items(state, include_deferred=True)
         path = export_dir / f"{state}.md"
         path.write_text(render_list(state, rows), encoding="utf-8")
         written.append(path)
+        counts[str(state)] = len(rows)
 
     projects_path = export_dir / "projects.md"
     projects_path.write_text(render_projects(store.list_projects()), encoding="utf-8")
     written.append(projects_path)
+
+    # One file to check freshness against, so a reader does not have to parse
+    # six. Written LAST: if the export dies partway, the manifest is absent or
+    # older than the files, and a reader that trusts it fails closed rather
+    # than reporting a half-written set as current.
+    manifest = export_dir / "_manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                "files": sorted(p.name for p in written),
+                "counts": counts,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    written.append(manifest)
 
     return written

@@ -7,7 +7,7 @@ from gtd.models import ItemState
 def test_export_writes_a_file_per_list_plus_projects(store, tmp_path):
     written = export_all(store, tmp_path / "exports")
     names = {p.name for p in written}
-    assert names == {f"{s}.md" for s in EXPORTED_STATES} | {"projects.md"}
+    assert names == {f"{s}.md" for s in EXPORTED_STATES} | {"projects.md", "_manifest.json"}
     assert all(p.exists() for p in written)
 
 
@@ -103,3 +103,40 @@ def test_export_is_idempotent(store, tmp_path):
     after = (first / "inbox.md").read_text()
     # Only the generated-at timestamp may differ; the item content must not.
     assert "- [ ] something" in before and "- [ ] something" in after
+
+
+def test_manifest_records_when_the_export_ran(store, tmp_path):
+    """A reader of a COPY (the Obsidian mirror) cannot tell from content alone
+    whether it is current. A brief built on a stale export reports yesterday's
+    list with full confidence, so freshness has to be computable."""
+    import json
+    from datetime import datetime
+
+    export_all(store, tmp_path / "exports")
+    manifest = json.loads((tmp_path / "exports" / "_manifest.json").read_text())
+
+    generated = datetime.fromisoformat(manifest["generated_at"])
+    assert generated.tzinfo is not None, "needs an offset to compare across machines"
+    assert (datetime.now(generated.tzinfo) - generated).total_seconds() < 60
+
+
+def test_manifest_counts_match_the_lists(store, tmp_path):
+    import json
+
+    store.capture("one manifest probe")
+    export_all(store, tmp_path / "exports")
+    manifest = json.loads((tmp_path / "exports" / "_manifest.json").read_text())
+    assert manifest["counts"]["inbox"] == 1
+
+
+def test_every_list_file_carries_a_machine_readable_timestamp(store, tmp_path):
+    """The human line is for a person; this one is for whatever reads a copy."""
+    from datetime import datetime
+
+    written = export_all(store, tmp_path / "exports")
+    for path in (p for p in written if p.suffix == ".md"):
+        text = path.read_text()
+        marker = [ln for ln in text.splitlines() if ln.startswith("<!-- generated_at:")]
+        assert marker, f"{path.name} has no machine-readable timestamp"
+        stamp = marker[0].split("generated_at:")[1].replace("-->", "").strip()
+        datetime.fromisoformat(stamp)  # raises if unparseable
