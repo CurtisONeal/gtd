@@ -47,6 +47,11 @@ lack entirely: `defer_until`, a real tickler. Deferred items *disappear* from
 next actions until their date arrives, and the list tells you how many are
 hidden so it's never silent.
 
+The same trick carries the lists that are *not* actionable at all — books,
+checklists and technology projects. They are states of the same table with a
+`rank` for sequence, so they reach the same editing and undo machinery without
+being a second system. None of them generate next actions.
+
 Waiting For also handles blocked work. Use **Waiting on** for people or
 external events, and **Blocked by task** for task dependencies such as
 `Buy cookies -> Eat cookies`. When the blocking task is completed, the blocked
@@ -144,19 +149,25 @@ without it needing to speak SQLite.
 ```
 src/gtd/
 ├── config.py    env-driven settings — nothing hardcoded to localhost
-├── db.py        connection + schema (plain sqlite3, WAL, no ORM)
-├── models.py    ItemState / Energy / ProjectStatus / Source, TIME_ESTIMATES
+├── db.py        connection + schema + migrations (plain sqlite3, WAL, no ORM)
+├── models.py    ItemState / Energy / ProjectStatus / ChecklistStatus /
+│                BookCategory / Source, TIME_ESTIMATES, PERCENT_BUCKETS
 ├── store.py     repository layer — ALL SQL lives here
 ├── auth.py      argon2id hashing, session helpers, login rate limiter
 ├── export.py    markdown export
 ├── cli.py       command line entry point
 ├── web.py       FastAPI app and routes
-├── templates/   Jinja2 — base, login, index, clarify, list, edit, projects
+├── templates/   Jinja2 — base, login, index, clarify, list, edit, projects,
+│                books, checklists, checklist, tech
 └── static/      style.css (that's the entire frontend)
 ```
 
 Confining SQL to `store.py` is what makes a later move to Postgres a real
 option rather than a rewrite.
+
+Schema changes are versioned: `SCHEMA` describes the current shape for a fresh
+database, and `MIGRATIONS` brings an existing one up to it. Both are needed —
+`CREATE TABLE IF NOT EXISTS` cannot add a column to a table that already exists.
 
 ## Tests
 

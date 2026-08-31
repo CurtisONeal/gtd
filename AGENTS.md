@@ -80,16 +80,38 @@ personal data in a third-party spreadsheet with no real auth.
 ```
 src/gtd/
 ├── config.py    env-driven settings; nothing hardcoded to localhost
-├── db.py        connection + schema (plain sqlite3, WAL)
-├── models.py    ItemState / Energy / ProjectStatus / Source / TIME_ESTIMATES
+├── db.py        connection + schema + MIGRATIONS (plain sqlite3, WAL)
+├── models.py    ItemState / Energy / ProjectStatus / ChecklistStatus /
+│                BookCategory / Source / TIME_ESTIMATES / PERCENT_BUCKETS
 ├── store.py     repository layer — ALL SQL
 ├── auth.py      argon2id hashing, session key, login rate limiter
 ├── export.py    markdown export
 ├── cli.py       argparse entry point
 ├── web.py       FastAPI app + routes
-├── templates/   base, login, index, clarify, list, edit, projects
+├── templates/   base, login, index, clarify, list, edit, projects,
+│                books, checklists, checklist, tech
 └── static/      style.css — the entire frontend
 ```
+
+## Ordered lists
+
+Books, checklists and technology projects are one concept: an ordered,
+categorised list *outside* the actionable flow. They share `items.rank` —
+sequence within a group, which is not `priority` (P1-P3 importance). See
+ADR-012 and ADR-013.
+
+- The grouping column is a parameter, whitelisted in `RANK_GROUPS`, because it
+  is interpolated into SQL as a column name. Validate before reading it off a
+  row.
+- Ranks are ordered but **not contiguous**. Find a neighbour by comparison, not
+  `rank ± 1` — a deleted row leaves a gap by design.
+- Unranked rows sort last and materialise a rank on first move, so data that
+  predates a list stays usable.
+- Checklists have a container table because `evergreen` and a one-off's
+  completion belong to the list, not its items. `ticked` is checklist-local and
+  is **never** the `done` state, or reset would have to resurrect rows.
+- None of these generate next actions. Keep it that way; it is what stops the
+  feature becoming a second project system.
 
 ## Gotchas that have already bitten
 
@@ -114,7 +136,18 @@ src/gtd/
   a no-op on an existing database, so a column added only to `SCHEMA` reaches
   fresh installs and nothing else. Bump `SCHEMA_VERSION` and add the statement
   to `MIGRATIONS` in `db.py`, then prove it against a database built at the
-  previous version — see `test_migration_adds_rank_to_an_existing_database`.
+  previous version — see
+  `test_migrating_from_each_previous_version_reaches_existing_data`, which is
+  parameterised over every upgrade path and derives its fixtures from
+  `MIGRATIONS` so it cannot quietly stop testing anything.
+- **Indexes go in `SCHEMA_INDEXES`, never with the tables.** They are applied
+  *after* migrations. An index over a column a migration is about to add will
+  fail on every existing database, because the table already exists and the
+  column does not yet. This crashed startup once and was caught only by the
+  migration test.
+- **A new NOT NULL flag needs adding to `boolean` in `update_item`.** An
+  unchecked checkbox sends nothing at all, and `_clean` would turn that blank
+  into `NULL`. Same trap as the text columns above, different column type.
 - **launchd + uvicorn don't hot-reload.** After editing a plist or source, you
   must `bootout` then `bootstrap`; `uvicorn` without `--reload` won't see code
   changes.
