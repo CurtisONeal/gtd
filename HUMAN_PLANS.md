@@ -39,6 +39,39 @@ should end up in `ADR.md` when it lands.
 
 ## Next up — decided, not built
 
+- **Backup and restore.** Raised 2026-08-30, once the app became something to
+  depend on. **There is no backup today**, of GTD or of this machine: `tmutil`
+  reports no Time Machine destination configured. `exports/` is markdown and
+  lossy — it is a reading format, not a restore path.
+
+  Three things are true regardless of where backups go:
+
+  - **A copy must not be `cp gtd.db`.** The database is in WAL mode, so a plain
+    file copy can miss committed pages sitting in `-wal`. Use SQLite's own
+    `.backup` / `VACUUM INTO`, which is what the ad-hoc backups taken during the
+    Books work already used.
+  - **A restore has to be rehearsed, not assumed.** Restoring into a scratch
+    path and starting the app against it is the only thing that proves a backup
+    is real. Verify the artifact, not the procedure.
+  - **`.env` is part of a full restore** and is a secret. It never goes offsite
+    unencrypted, and never into this repo.
+
+  **The decision that needs making: where the offsite copy lives.** This is the
+  one place backup meets AGENTS.md constraint 4 ("nothing leaves the machine"),
+  so it needs an explicit decision and an ADR rather than being assumed.
+
+  | Option | Constraint 4 | Notes |
+  |---|---|---|
+  | **Second Mac over Tailscale** (`curtiss-mac-mini`) | Honours the intent — hardware Curtis owns, encrypted transport, no third party | Recommended. Needs the other machine to be up sometimes; that is the only real weakness |
+  | Encrypted blob to iCloud/B2/S3 | Third party holds ciphertext only | Survives losing both machines. Adds a key to manage, which becomes the new single point of failure |
+  | Time Machine to a local disk | Local only | Worth doing anyway for the whole machine, but a `.db` in WAL mode is not guaranteed consistent in a file-level backup |
+
+  These are not exclusive: the second Mac for routine recovery plus an encrypted
+  offsite copy for disaster is the belt-and-braces version.
+
+  Next action: pick the destination, then build `gtd backup` / `gtd restore`
+  plus a launchd timer, and rehearse a restore before trusting it.
+
 - **Weekly Review flow.** Build a guided server-rendered weekly review feature.
   This is the biggest gap versus the method as written: Allen calls weekly
   review the critical success factor, and this app currently has no review flow.
