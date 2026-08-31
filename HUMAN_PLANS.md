@@ -169,122 +169,17 @@ should end up in `ADR.md` when it lands.
   now fixed: schema bumps were silent no-ops (there was no migration mechanism
   at all), and running the test suite from the repo root mutated the live
   database, because importing `gtd.web` runs `create_app()` and `GTD_DB_PATH`
-  defaults to `./gtd.db`. Commit 3 (Checklists + Technology Projects) is the
-  remaining piece.
+  defaults to `./gtd.db`.
+- 2026-08-30 — **Checklists and Technology Projects (commit 3).** Checklists got
+  a container table for `evergreen` and one-off completion; evergreen lists
+  reset, one-offs complete manually, and `ticked` is never the `done` state.
+  Technology projects are the ordered-list concept with nothing added. See
+  ADR-013. Fixed a migration ordering bug found on the way: indexes were applied
+  with the tables, before the migration that added the column they covered,
+  which would have crashed startup on any existing database.
+  **The whole ordered lists + Books + Checklists spec is now built.**
 
 ---
-
-## Ordered lists + Books — specced, decided, not built
-
-Decided 2026-08-30. **All the open questions below are answered** — this is
-ready to build in a fresh session. Sequence it as three commits.
-
-### The shape underneath
-
-Books, Checklists and "Technology Projects" are the same thing: an **ordered,
-categorised, low-ceremony list that sits outside the actionable flow**. Books
-just adds progress fields. Build the shared concept once, specialise it.
-
-### Commit 1 — ordered lists
-
-**Decision: option A.** New `ItemState` value(s) plus nullable columns on
-`items`. Not a separate table.
-
-Rationale: keeps ADR-001 intact ("adding a list means adding an enum value"),
-keeps these items inside the one system, and a few nullable columns is a
-smaller cost than a parallel world that cannot reach contexts, dependencies or
-the clarify flow. Record this in ADR.md when built.
-
-What "ordered" needs that items lack: a **rank within a category**, distinct
-from `priority` (which is P1-P3 importance, not sequence).
-
-### Commit 2 — Books, specialising the above
-
-**Fields:**
-
-| Field | Notes |
-|---|---|
-| `book_category` | **new concept, not `areas`** — fiction / graphic novel / general non-fiction / technology. Areas are life areas (Personal, Work, Health…); this is a book taxonomy and mixing them would muddy both. |
-| started | boolean |
-| `started_on` | rough date, only meaningful when started |
-| `percent_complete` | **buckets: 0 / 25 / 33 / 50 / 66 / 75 / 100.** Not freeform — "estimate" is the point, and a text box invites fiddling. 33 and 66 are wanted (thirds get used in practice). |
-| `is_audio` | boolean. Currently far more fiction is listened to than read, and that is worth being able to see and filter. |
-| rank | **per category** — each category orders independently. |
-
-**Behaviour:**
-
-- **Category reordering is TRANSIENT** — a UI sorting view, "bring this
-  category to the top so I can work on it". It does **not** persist, so
-  categories need no stored `sort_order` and there is no reorder-and-save UI.
-  Cheapest correct version.
-- **Finishing moves the book to `done`**, like anything else. It leaves the
-  reading page.
-- **Books do NOT generate next actions.** If a book needs an action
-  ("finish ch. 3"), that gets captured as an ordinary task through the normal
-  flow. No dependency machinery, no project linkage. This keeps the feature
-  small and is the main reason it is one session rather than three.
-
-### Commit 3 — Checklists + Technology Projects
-
-Both reuse the ordered-list concept and should be nearly free once it exists.
-
-- **Checklists** — recurring reference sets: what to take to work, to the dojo,
-  what to consider when building a Magic deck.
-- **Technology Projects** — a deliberately uncomplicated re-orderable dump
-  list. No project ceremony.
-
-**Resolved 2026-08-30 — checklists are ticked in place, and have two kinds.**
-
-A checklist is `evergreen` true/false, and the flag decides its terminal action:
-
-| Kind | Example | Terminal action |
-|---|---|---|
-| Evergreen | "Go to work", dojo bag, Magic deck considerations | **Reset** — clears the tick boxes and nothing else. Items, order and category stay put. The checklist never completes. |
-| One-off | "Build the IKEA shelves" | **Complete** — the checklist goes to done and leaves the page. Never reset. |
-
-Both are POST-redirect-GET actions on the checklist page, consistent with the
-no-JS UI style.
-
-Ticking is a checklist-local boolean, **not** `done` state. A ticked checklist
-item must not move to the Done list the way a finished book does, or reset would
-have to resurrect items out of `done`.
-
-**Consequence for commit 1 — checklists need a table.** `evergreen`, and the
-completed state of a one-off, are properties of *the checklist as a whole*, not
-of its items. The current spec has no row for "the checklist" — categories were
-going to be a plain text field on items, like `book_category`. Denormalising
-`evergreen` onto every item is a bug farm: it must stay consistent across rows,
-flipping it becomes a multi-row update, and an empty checklist cannot exist
-because it has no row to carry the flag.
-
-So: a small `checklists` table (`id`, `name`, `evergreen`, `status`,
-`completed_at`, `created_at`), with items carrying `checklist_id` + rank. This
-mirrors `projects` and does **not** violate ADR-001 — that ADR is about *lists*
-being states of `items`; containers already get their own tables (`areas`,
-`contexts`, `projects`). Books are unaffected: `book_category` genuinely is a
-taxonomy, not a container.
-
-**Known method drift, accepted deliberately.** A one-off checklist is, in GTD
-terms, a project — a multi-step outcome finished once. This app already has
-projects with a status and linked actions. The trade is the same one already
-made for "Technology Projects": buying a low-ceremony container that skips
-outcome / area / review_date. Consequences to keep in view:
-
-- There will be two valid ways to represent "build the shelves".
-- The Weekly Review flow will have to decide whether one-off checklists are
-  reviewed as projects. Decide that *there*, not here.
-
-**Completion is manual.** A one-off does not complete itself when its last item
-is ticked; the page says all items are ticked and the human presses Complete.
-Auto-completing on a tick is surprising and awkward to undo after a mis-tick,
-and "disclose, don't hide" favours saying so over acting silently.
-
-### Not in this work
-
-**Recurring tasks** (take medication, verbally express appreciation for family)
-are a genuinely different feature — repeat rules and generating the next
-occurrence, touching the tickler/`defer_until` logic. **Its own session and
-commit.** Do not fold it in.
 
 ## Read API for agents — scoped, not built
 

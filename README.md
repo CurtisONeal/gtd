@@ -112,6 +112,14 @@ Ticking is checklist-local and is **not** the Done state. If a tick moved an
 item to Done, reset would have to pull rows back out of Done, and packing a bag
 would litter the Done list every time.
 
+## Technology projects
+
+`/tech` is a re-orderable dump list and nothing more — no outcome, no area, no
+review date. It exists so a "might build this someday" idea has somewhere to sit
+without earning project ceremony. If one grows into real work, capture it as a
+project. See ADR-013 for why this and one-off checklists are both accepted
+overlaps with projects.
+
 ## CLI
 
 ```bash

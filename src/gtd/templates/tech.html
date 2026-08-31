@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Technology Projects — GTD{% endblock %}
+{% block content %}
+
+<h1>Technology Projects</h1>
+<p class="sub">
+  A re-orderable dump list, deliberately uncomplicated — no outcome, no area, no
+  review date. If one of these earns real project ceremony, capture it as a
+  project instead.
+</p>
+
+<form method="post" action="/tech/add" class="card">
+  <label for="add_title">Add</label>
+  <input type="text" id="add_title" name="title" required>
+  <div class="actions"><button type="submit" class="primary">Add</button></div>
+</form>
+
+{% if not items %}
+  <p class="empty">Nothing here yet.</p>
+{% else %}
+<div class="card">
+  {% for item in items %}
+  <div class="item">
+    <form method="post" action="/tech/{{ item.id }}/move" class="inline-form">
+      <input type="hidden" name="delta" value="-1">
+      <button type="submit" class="linkish" title="Move up" {% if loop.first %}disabled{% endif %}>↑</button>
+    </form>
+    <form method="post" action="/tech/{{ item.id }}/move" class="inline-form">
+      <input type="hidden" name="delta" value="1">
+      <button type="submit" class="linkish" title="Move down" {% if loop.last %}disabled{% endif %}>↓</button>
+    </form>
+
+    <div class="item-body">
+      <div class="item-title">{{ item.title }}</div>
+      {% if item.notes %}<div class="item-notes">{{ item.notes }}</div>{% endif %}
+    </div>
+
+    <form method="post" action="/items/{{ item.id }}/complete" class="inline-form">
+      <input type="hidden" name="back" value="/tech">
+      <button type="submit" title="Mark complete">✓</button>
+    </form>
+
+    <a class="btn linkish" href="/items/{{ item.id }}/edit?back=/tech" title="Edit">✎</a>
+
+    <form method="post" action="/items/{{ item.id }}/delete" class="inline-form">
+      <input type="hidden" name="back" value="/tech">
+      <button type="submit" class="linkish" title="Move to trash">✕</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

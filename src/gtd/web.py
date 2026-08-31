@@ -441,6 +441,31 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store.complete(item_id)
         return RedirectResponse("/books", status_code=303)
 
+    # ── Technology projects ──────────────────────────────────────────────────
+
+    @app.get("/tech", response_class=HTMLResponse)
+    def tech_projects(request: Request):
+        """A deliberately uncomplicated re-orderable dump list.
+
+        No outcome, no area, no review date — if something here earns project
+        ceremony it can be captured as a real project instead.
+        """
+        return render(
+            request, "tech.html", items=store.list_ordered(ItemState.TECH_PROJECT)
+        )
+
+    @app.post("/tech/add")
+    def tech_add(title: str = Form(...)):
+        if title.strip():
+            store.append_to_ordered(title, ItemState.TECH_PROJECT)
+        return RedirectResponse("/tech", status_code=303)
+
+    @app.post("/tech/{item_id}/move")
+    def tech_move(item_id: int, delta: int = Form(...)):
+        if delta in (-1, 1):
+            store.move_in_order(item_id, delta)
+        return RedirectResponse("/tech", status_code=303)
+
     # ── Checklists ───────────────────────────────────────────────────────────
 
     @app.get("/checklists", response_class=HTMLResponse)
@@ -526,6 +551,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ordered_pages = {
             str(ItemState.BOOK): "/books",
             str(ItemState.CHECKLIST): "/checklists",
+            str(ItemState.TECH_PROJECT): "/tech",
         }
         if state in ordered_pages:
             return RedirectResponse(ordered_pages[state], status_code=303)
