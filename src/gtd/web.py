@@ -540,7 +540,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         Defaults to next_action rather than guessing the previous list — the
         edit page can move it anywhere afterwards. Reference/someday items that
         were trashed keep their nature better if the caller passes `state`.
+
+        Books are the one case that must not fall through to that default: they
+        are not in `user_lists()`, so undoing a finished book would file it as
+        an action rather than returning it to its shelf.
         """
+        if store.restore_book(item_id):
+            return RedirectResponse(_safe_back(back, "/books"), status_code=303)
+
         target = state if state in {str(s) for s in ItemState.user_lists()} else str(
             ItemState.NEXT_ACTION
         )

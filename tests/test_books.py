@@ -169,6 +169,84 @@ def test_generic_list_page_redirects_books_to_their_own_page(signed_in):
     assert response.headers["location"] == "/books"
 
 
+def test_only_one_control_reads_as_completion(signed_in, app):
+    """Three controls looked like "done": the 100% bucket, Save, and a bare ✓.
+    Only one of them completes a book, and the page must say which.
+    """
+    client = signed_in
+    app.state.store.add_book("Dune", book_category=BookCategory.FICTION)
+
+    body = client.get("/books").text
+
+    assert "Move to Done" in body
+    assert ">Save progress<" in body, "the progress button must not read as completion"
+
+
+def test_a_book_at_100_percent_is_not_finished_and_says_so(signed_in, app):
+    """Setting 100% is a progress estimate, not completion — reaching it must
+    leave the book on the shelf, and the page must explain why it is still there.
+    """
+    client = signed_in
+    store = app.state.store
+    book_id = store.add_book("Dune", book_category=BookCategory.FICTION)
+
+    client.post(f"/books/{book_id}/progress", data={"percent_complete": "100", "started": "1"})
+
+    assert store.get_item(book_id)["state"] == ItemState.BOOK
+    body = client.get("/books").text
+    assert "Dune" in body
+    assert "move it to Done" in body
+
+
+def test_restoring_a_finished_book_returns_it_to_its_shelf(store, books):
+    """Undo must know what the item was. Books are not in user_lists(), so the
+    generic restore would file a finished book as a next action."""
+    store.complete(books[0])
+    assert store.restore_book(books[0]) is True
+
+    item = store.get_item(books[0])
+    assert item["state"] == ItemState.BOOK
+    assert item["completed_at"] is None
+    assert "Dune" in [row["title"] for row in store.list_books()]
+
+
+def test_a_restored_book_does_not_collide_with_a_live_rank(store):
+    """A finished book keeps its old rank, which a later book may have reused.
+    Restoring appends rather than reinstating a rank that is now taken."""
+    first = store.add_book("first", book_category=BookCategory.FICTION)
+    store.complete(first)
+    second = store.add_book("second", book_category=BookCategory.FICTION)
+    assert store.get_item(second)["rank"] == store.get_item(first)["rank"]
+
+    store.restore_book(first)
+
+    live = [row["rank"] for row in store.list_books()]
+    assert len(set(live)) == len(live), f"duplicate ranks on the live shelf: {live}"
+    assert [row["title"] for row in store.list_books()] == ["second", "first"]
+
+
+def test_restore_route_sends_a_book_home_not_to_next_actions(signed_in, app):
+    client = signed_in
+    store = app.state.store
+    book_id = store.add_book("Dune", book_category=BookCategory.FICTION)
+    client.post(f"/books/{book_id}/finish")
+
+    client.post(f"/items/{book_id}/restore", data={"back": "/list/done"})
+
+    assert store.get_item(book_id)["state"] == ItemState.BOOK
+    assert store.list_items(ItemState.NEXT_ACTION) == []
+
+
+def test_restore_still_works_normally_for_non_books(store):
+    """The book branch must not swallow ordinary restores."""
+    item_id = store.capture("ordinary task")
+    store.complete(item_id)
+
+    assert store.restore_book(item_id) is False
+    store.uncomplete(item_id)
+    assert store.get_item(item_id)["state"] == ItemState.NEXT_ACTION
+
+
 def test_category_float_is_transient(signed_in, app):
     """`top` reorders the page and nothing else — it must not be persisted."""
     client = signed_in

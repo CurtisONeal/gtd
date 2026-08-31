@@ -398,6 +398,33 @@ class Store:
             percent_complete=0,
         )
 
+    def restore_book(self, item_id: int) -> bool:
+        """Put a finished book back on its shelf, at the end of its category.
+
+        Undoing a completion has to know what the item *was*. Books are not in
+        `user_lists()`, so the generic restore would drop one into Next Actions
+        — a book masquerading as an action. It also gets a fresh rank rather
+        than its old one, which may since have been reused by a live book.
+        """
+        item = self.get_item(item_id)
+        if item is None or not item["book_category"]:
+            return False
+
+        where, params = self._rank_scope(
+            ItemState.BOOK, "book_category", item["book_category"]
+        )
+        with self.db.connect() as conn:
+            top = conn.execute(
+                f'SELECT MAX("rank") AS top FROM items WHERE {where}', params
+            ).fetchone()["top"]
+            conn.execute(
+                """UPDATE items
+                      SET state = ?, "rank" = ?, completed_at = NULL, updated_at = ?
+                    WHERE id = ?""",
+                (str(ItemState.BOOK), 0 if top is None else top + 1, _now(), item_id),
+            )
+        return True
+
     def list_books(self) -> list[sqlite3.Row]:
         """Every unfinished book, in category then rank order.
 

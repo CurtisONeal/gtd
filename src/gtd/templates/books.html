@@ -6,7 +6,8 @@
 <h1>Books</h1>
 <p class="sub">
   {{ total }} book{{ '' if total == 1 else 's' }} on the go.
-  Finishing one completes it, so it leaves this page.
+  Percentage is just an estimate — <strong>Move to Done</strong> is what
+  finishes a book and takes it off this page.
 </p>
 
 <details class="card">
@@ -90,12 +91,18 @@
           <option value="{{ bucket }}" {% if bucket == (book.percent_complete or 0) %}selected{% endif %}>{{ bucket }}%</option>
           {% endfor %}
         </select>
-        <button type="submit" class="linkish">Save</button>
+        <button type="submit" class="linkish">Save progress</button>
       </form>
+
+      {% if book.percent_complete == 100 %}
+      {# Reaching 100% does not finish a book by itself — say so rather than
+         leaving it looking complete but still on the shelf. #}
+      <div class="meta"><span>at 100% — move it to Done when you're finished</span></div>
+      {% endif %}
     </div>
 
     <form method="post" action="/books/{{ book.id }}/finish" class="inline-form">
-      <button type="submit" class="linkish" title="Finished — completes the book">✓</button>
+      <button type="submit" class="linkish" title="Complete this book and file it under Done">Move to Done</button>
     </form>
 
     <a class="btn linkish" href="/items/{{ book.id }}/edit?back=/books" title="Edit">✎</a>
