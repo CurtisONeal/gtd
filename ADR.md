@@ -360,3 +360,44 @@ whitelisted parameter rather than baked in. Books add progress fields:
   completion, since those are properties of the list rather than its items.
   That does not contradict this ADR: containers (`areas`, `contexts`,
   `projects`) already have tables; what stays in `items` is the membership.
+
+## ADR-013: A checklist is a container; ticking is not completion
+
+**Status:** Accepted
+
+**Context.** ADR-012 put ordered lists in `items` as a state plus a rank.
+Checklists nearly fit, but two of their properties belong to the *list* rather
+than to any item: whether it is evergreen, and whether a one-off has been
+finished. There is also a question ADR-012 did not face — checklists are run
+repeatedly, so their items must be un-ticked and used again, while a book is
+never reset.
+
+**Decision.** Give checklists a `checklists` table (`name`, `evergreen`,
+`status`, `completed_at`). Membership stays in `items` with a `checklist_id` and
+a rank, so ADR-001 still holds — the list is a state of `items`; only the
+container is new. Add a checklist-local `ticked` flag, distinct from `done`.
+
+Evergreen lists **reset**, clearing ticks and nothing else. One-offs
+**complete**, manually, even when every item is ticked.
+
+**Evaluation.**
+- Containers already have tables here (`areas`, `contexts`, `projects`).
+  Denormalising `evergreen` onto every item would need it kept consistent
+  across rows, would make flipping it a multi-row update, and would make an
+  empty checklist impossible to represent.
+- `ticked` must not be the `done` state. If ticking moved an item to Done, reset
+  would have to resurrect rows out of `done`, and packing a bag would fill the
+  Done list with "socks, gi, belt" every time.
+- Completion stays manual, matching the same choice made for books: acting on
+  the last tick is surprising and awkward to undo after a mis-tick. The page
+  discloses that everything is ticked rather than deciding for the user.
+
+**Consequences.**
+- A one-off checklist is, in GTD terms, a project — a multi-step outcome
+  finished once. This is accepted drift, the same trade already made for
+  technology projects: a low-ceremony container with no outcome, area or review
+  date. There are now two valid ways to represent "build the shelves".
+- The Weekly Review flow will have to decide whether one-off checklists are
+  reviewed as projects. That decision belongs there, not here.
+- Deleting a checklist cascades to its items, which is why they are items of the
+  list rather than free-floating rows that merely reference it.

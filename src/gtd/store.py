@@ -11,7 +11,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Sequence
 
 from .db import Database
-from .models import ItemState, ProjectStatus, Source
+from .models import ChecklistStatus, ItemState, ProjectStatus, Source
 
 
 def _now() -> str:
@@ -26,7 +26,7 @@ def _today() -> str:
 
 # Columns an ordered list may be grouped by. Whitelisted because the name is
 # interpolated into SQL as a column name, which parameter binding cannot do.
-RANK_GROUPS: frozenset[str] = frozenset({"book_category"})
+RANK_GROUPS: frozenset[str] = frozenset({"book_category", "checklist_id"})
 
 
 def _clean(value: Any) -> Any:
@@ -83,6 +83,7 @@ class Store:
             "energy", "time_estimate_min", "priority", "due_date", "defer_until",
             "waiting_on", "rank", "source",
             "book_category", "started", "started_on", "percent_complete", "is_audio",
+            "checklist_id", "ticked",
         }
         unknown = set(fields) - allowed
         if unknown:
@@ -98,7 +99,7 @@ class Store:
         # value into NULL and violate the constraint — the same shape of bug as
         # the empty-string-into-a-NOT-NULL-text-column one above. An unchecked
         # checkbox sends nothing at all, and "absent" must mean false, not null.
-        boolean = {"started", "is_audio"}
+        boolean = {"started", "is_audio", "ticked"}
 
         if "title" in fields and not str(fields["title"]).strip():
             raise ValueError("title cannot be empty")
@@ -465,6 +466,147 @@ class Store:
                 fields["started_on"] = None
         if fields:
             self.update_item(item_id, **fields)
+
+    # ── Checklists ───────────────────────────────────────────────────────────
+    #
+    # A checklist is a container, so it gets a table — `evergreen` and a
+    # one-off's completion are properties of the list as a whole, not of any
+    # item in it. Membership still lives in `items`, ranked within the list.
+    #
+    # The two kinds differ only in their terminal action:
+    #   evergreen -> reset, clearing ticks. It is run again and never completes.
+    #   one-off   -> complete, and it leaves the page. It is never reset.
+    #
+    # `ticked` is checklist-local and deliberately NOT the `done` state. If
+    # ticking moved an item to Done, reset would have to resurrect rows out of
+    # `done`, and packing a bag would litter the Done list.
+
+    def create_checklist(self, name: str, *, evergreen: bool = True) -> int:
+        name = name.strip()
+        if not name:
+            raise ValueError("name cannot be empty")
+        now = _now()
+        with self.db.connect() as conn:
+            cur = conn.execute(
+                """INSERT INTO checklists (name, evergreen, status, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (name, 1 if evergreen else 0, str(ChecklistStatus.ACTIVE), now, now),
+            )
+            return cur.lastrowid
+
+    def get_checklist(self, checklist_id: int) -> sqlite3.Row | None:
+        with self.db.connect() as conn:
+            return conn.execute(
+                "SELECT * FROM checklists WHERE id = ?", (checklist_id,)
+            ).fetchone()
+
+    def list_checklists(
+        self, status: str | None = ChecklistStatus.ACTIVE
+    ) -> list[sqlite3.Row]:
+        """Checklists with their item and tick counts, so the index can show
+        progress without a query per row."""
+        sql = [
+            """SELECT c.*,
+                      (SELECT COUNT(*) FROM items i
+                        WHERE i.checklist_id = c.id AND i.state = 'checklist') AS item_count,
+                      (SELECT COUNT(*) FROM items i
+                        WHERE i.checklist_id = c.id AND i.state = 'checklist'
+                          AND i.ticked = 1) AS ticked_count
+                 FROM checklists c"""
+        ]
+        params: list[Any] = []
+        if status is not None:
+            sql.append("WHERE c.status = ?")
+            params.append(str(status))
+        sql.append("ORDER BY c.evergreen DESC, c.name ASC")
+        with self.db.connect() as conn:
+            return conn.execute(" ".join(sql), params).fetchall()
+
+    def update_checklist(self, checklist_id: int, **fields: Any) -> None:
+        allowed = {"name", "evergreen", "notes"}
+        unknown = set(fields) - allowed
+        if unknown:
+            raise ValueError(f"unknown field(s): {', '.join(sorted(unknown))}")
+        if not fields:
+            return
+        if "name" in fields and not str(fields["name"]).strip():
+            raise ValueError("name cannot be empty")
+
+        values = []
+        for k, v in fields.items():
+            if k == "evergreen":
+                values.append(1 if v else 0)
+            else:
+                values.append(str(v).strip())
+        sets = ", ".join(f"{k} = ?" for k in fields)
+        with self.db.connect() as conn:
+            conn.execute(
+                f"UPDATE checklists SET {sets}, updated_at = ? WHERE id = ?",
+                (*values, _now(), checklist_id),
+            )
+
+    def delete_checklist(self, checklist_id: int) -> None:
+        """Removes the list and its items — the FK cascades."""
+        with self.db.connect() as conn:
+            conn.execute("DELETE FROM checklists WHERE id = ?", (checklist_id,))
+
+    def add_checklist_item(self, checklist_id: int, title: str) -> int:
+        return self.append_to_ordered(
+            title,
+            ItemState.CHECKLIST,
+            group="checklist_id",
+            checklist_id=checklist_id,
+        )
+
+    def list_checklist_items(self, checklist_id: int) -> list[sqlite3.Row]:
+        return self.list_ordered(
+            ItemState.CHECKLIST, group="checklist_id", group_value=checklist_id
+        )
+
+    def set_ticked(self, item_id: int, ticked: bool) -> None:
+        self.update_item(item_id, ticked=1 if ticked else 0)
+
+    def reset_checklist(self, checklist_id: int) -> bool:
+        """Clear the ticks and nothing else — items, order and membership stay.
+
+        Only meaningful for an evergreen list; a one-off is completed instead of
+        being run again.
+        """
+        checklist = self.get_checklist(checklist_id)
+        if checklist is None or not checklist["evergreen"]:
+            return False
+        with self.db.connect() as conn:
+            conn.execute(
+                """UPDATE items SET ticked = 0, updated_at = ?
+                    WHERE checklist_id = ? AND state = ?""",
+                (_now(), checklist_id, str(ItemState.CHECKLIST)),
+            )
+        return True
+
+    def complete_checklist(self, checklist_id: int) -> bool:
+        """Finish a one-off. Evergreen lists never complete — they reset."""
+        checklist = self.get_checklist(checklist_id)
+        if checklist is None or checklist["evergreen"]:
+            return False
+        now = _now()
+        with self.db.connect() as conn:
+            conn.execute(
+                """UPDATE checklists
+                      SET status = ?, completed_at = ?, updated_at = ?
+                    WHERE id = ?""",
+                (str(ChecklistStatus.DONE), now, now, checklist_id),
+            )
+        return True
+
+    def reopen_checklist(self, checklist_id: int) -> None:
+        now = _now()
+        with self.db.connect() as conn:
+            conn.execute(
+                """UPDATE checklists
+                      SET status = ?, completed_at = NULL, updated_at = ?
+                    WHERE id = ?""",
+                (str(ChecklistStatus.ACTIVE), now, checklist_id),
+            )
 
     def next_inbox_item(self) -> sqlite3.Row | None:
         """Oldest unclarified item — clarify works FIFO so nothing rots at the

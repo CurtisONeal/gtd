@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -55,6 +55,21 @@ CREATE TABLE IF NOT EXISTS projects (
     completed_at TEXT
 );
 
+-- A checklist is a container, like a project — `evergreen` and a one-off's
+-- completion belong to the list as a whole, not to any of its items. Its
+-- membership still lives in `items`, so ADR-001 holds.
+CREATE TABLE IF NOT EXISTS checklists (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    name         TEXT NOT NULL,
+    -- Evergreen lists are run repeatedly and reset; one-offs complete once.
+    evergreen    INTEGER NOT NULL DEFAULT 1,
+    status       TEXT NOT NULL DEFAULT 'active',
+    notes        TEXT NOT NULL DEFAULT '',
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL,
+    completed_at TEXT
+);
+
 -- The core table. Every GTD list is a `state` of this one table, so moving an
 -- item between lists is a single UPDATE, never a copy plus delete.
 CREATE TABLE IF NOT EXISTS items (
@@ -79,6 +94,10 @@ CREATE TABLE IF NOT EXISTS items (
     started_on        TEXT,   -- rough ISO date, only meaningful when started
     percent_complete  INTEGER,-- one of PERCENT_BUCKETS
     is_audio          INTEGER NOT NULL DEFAULT 0,
+    -- Checklists. `ticked` is checklist-local and is NOT the done state: reset
+    -- clears it, and a ticked item must never leave for the Done list.
+    checklist_id      INTEGER REFERENCES checklists(id) ON DELETE CASCADE,
+    ticked            INTEGER NOT NULL DEFAULT 0,
     created_at        TEXT NOT NULL,
     updated_at        TEXT NOT NULL,
     completed_at      TEXT
@@ -92,11 +111,20 @@ CREATE TABLE IF NOT EXISTS item_dependencies (
     CHECK (blocked_item_id != prerequisite_item_id)
 );
 
+"""
+
+# Indexes are applied *after* migrations, never with the tables. An index over a
+# column that a migration is about to add would otherwise fail on every existing
+# database: CREATE TABLE IF NOT EXISTS is a no-op there, so the column does not
+# exist yet when the index runs.
+SCHEMA_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_items_state       ON items(state);
 CREATE INDEX IF NOT EXISTS idx_items_project     ON items(project_id);
 CREATE INDEX IF NOT EXISTS idx_items_due_date    ON items(due_date);
 CREATE INDEX IF NOT EXISTS idx_items_defer_until ON items(defer_until);
 CREATE INDEX IF NOT EXISTS idx_projects_status   ON projects(status);
+CREATE INDEX IF NOT EXISTS idx_items_checklist   ON items(checklist_id);
+CREATE INDEX IF NOT EXISTS idx_checklists_status ON checklists(status);
 CREATE INDEX IF NOT EXISTS idx_item_dependencies_prerequisite
     ON item_dependencies(prerequisite_item_id);
 """
@@ -118,6 +146,12 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
         "ALTER TABLE items ADD COLUMN started_on TEXT",
         "ALTER TABLE items ADD COLUMN percent_complete INTEGER",
         "ALTER TABLE items ADD COLUMN is_audio INTEGER NOT NULL DEFAULT 0",
+    ),
+    5: (
+        # The table itself is created by SCHEMA above on every startup, so only
+        # the new items columns need an ALTER here.
+        "ALTER TABLE items ADD COLUMN checklist_id INTEGER REFERENCES checklists(id)",
+        "ALTER TABLE items ADD COLUMN ticked INTEGER NOT NULL DEFAULT 0",
     ),
 }
 
@@ -172,6 +206,9 @@ class Database:
                     for statement in MIGRATIONS.get(version, ()):
                         conn.execute(statement)
                 conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
+
+            # Only now that every column exists.
+            conn.executescript(SCHEMA_INDEXES)
         if seed_defaults:
             self._seed_defaults()
 

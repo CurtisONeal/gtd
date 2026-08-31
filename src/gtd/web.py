@@ -441,6 +441,78 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store.complete(item_id)
         return RedirectResponse("/books", status_code=303)
 
+    # ── Checklists ───────────────────────────────────────────────────────────
+
+    @app.get("/checklists", response_class=HTMLResponse)
+    def checklists(request: Request, show_done: int = 0):
+        return render(
+            request,
+            "checklists.html",
+            checklists=store.list_checklists(),
+            finished=store.list_checklists(status="done") if show_done else [],
+            show_done=bool(show_done),
+        )
+
+    @app.post("/checklists")
+    def checklists_create(name: str = Form(...), evergreen: str = Form("")):
+        if not name.strip():
+            return RedirectResponse("/checklists", status_code=303)
+        checklist_id = store.create_checklist(name, evergreen=bool(evergreen))
+        return RedirectResponse(f"/checklists/{checklist_id}", status_code=303)
+
+    @app.get("/checklists/{checklist_id}", response_class=HTMLResponse)
+    def checklist_detail(request: Request, checklist_id: int):
+        checklist = store.get_checklist(checklist_id)
+        if checklist is None:
+            return RedirectResponse("/checklists", status_code=303)
+        items = store.list_checklist_items(checklist_id)
+        return render(
+            request,
+            "checklist.html",
+            checklist=checklist,
+            items=items,
+            all_ticked=bool(items) and all(i["ticked"] for i in items),
+        )
+
+    @app.post("/checklists/{checklist_id}/items")
+    def checklist_add_item(checklist_id: int, title: str = Form(...)):
+        if title.strip():
+            store.add_checklist_item(checklist_id, title)
+        return RedirectResponse(f"/checklists/{checklist_id}", status_code=303)
+
+    @app.post("/checklists/{checklist_id}/items/{item_id}/tick")
+    def checklist_tick(checklist_id: int, item_id: int, ticked: str = Form("")):
+        store.set_ticked(item_id, bool(ticked))
+        return RedirectResponse(f"/checklists/{checklist_id}", status_code=303)
+
+    @app.post("/checklists/{checklist_id}/items/{item_id}/move")
+    def checklist_move(checklist_id: int, item_id: int, delta: int = Form(...)):
+        if delta in (-1, 1):
+            store.move_in_order(item_id, delta, group="checklist_id")
+        return RedirectResponse(f"/checklists/{checklist_id}", status_code=303)
+
+    @app.post("/checklists/{checklist_id}/reset")
+    def checklist_reset(checklist_id: int):
+        """Evergreen only — clears ticks so the list can be run again."""
+        store.reset_checklist(checklist_id)
+        return RedirectResponse(f"/checklists/{checklist_id}", status_code=303)
+
+    @app.post("/checklists/{checklist_id}/complete")
+    def checklist_complete(checklist_id: int):
+        """One-off only. Completion is manual even when everything is ticked."""
+        store.complete_checklist(checklist_id)
+        return RedirectResponse("/checklists", status_code=303)
+
+    @app.post("/checklists/{checklist_id}/reopen")
+    def checklist_reopen(checklist_id: int):
+        store.reopen_checklist(checklist_id)
+        return RedirectResponse(f"/checklists/{checklist_id}", status_code=303)
+
+    @app.post("/checklists/{checklist_id}/delete")
+    def checklist_delete(checklist_id: int):
+        store.delete_checklist(checklist_id)
+        return RedirectResponse("/checklists", status_code=303)
+
     @app.get("/list/{state}", response_class=HTMLResponse)
     def list_state(
         request: Request,
@@ -449,10 +521,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         context_id: str = "",
         area_id: str = "",
     ):
-        if state == ItemState.BOOK:
-            # Books are ordered and grouped; the generic list page cannot show
-            # either, so send them to the page that can.
-            return RedirectResponse("/books", status_code=303)
+        # Ordered lists are ranked and grouped; the generic list page can show
+        # neither, so send each to the page that can.
+        ordered_pages = {
+            str(ItemState.BOOK): "/books",
+            str(ItemState.CHECKLIST): "/checklists",
+        }
+        if state in ordered_pages:
+            return RedirectResponse(ordered_pages[state], status_code=303)
         if state not in {str(s) for s in ItemState}:
             return RedirectResponse("/", status_code=303)
 

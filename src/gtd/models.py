@@ -22,6 +22,8 @@ class ItemState(StrEnum):
     SOMEDAY = "someday"           # incubated, reviewed periodically
     REFERENCE = "reference"       # not actionable, worth keeping
     BOOK = "book"                 # ordered, ranked within a category — see /books
+    CHECKLIST = "checklist"       # a member of a checklist, ranked within it
+    TECH_PROJECT = "tech_project" # ordered dump list, no project ceremony
     DONE = "done"
     TRASHED = "trashed"           # soft delete, recoverable
 
@@ -67,6 +69,11 @@ class Energy(StrEnum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
+
+
+class ChecklistStatus(StrEnum):
+    ACTIVE = "active"
+    DONE = "done"
 
 
 class ProjectStatus(StrEnum):
@@ -116,6 +123,8 @@ STATE_LABELS: dict[str, str] = {
     ItemState.SOMEDAY: "Someday / Maybe",
     ItemState.REFERENCE: "Reference",
     ItemState.BOOK: "Books",
+    ItemState.CHECKLIST: "Checklist",
+    ItemState.TECH_PROJECT: "Technology Projects",
     ItemState.DONE: "Done",
     ItemState.TRASHED: "Trash",
 }

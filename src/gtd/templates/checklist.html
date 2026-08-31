@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}{{ checklist.name }} — GTD{% endblock %}
+{% block content %}
+
+<p class="sub"><a href="/checklists">← Checklists</a></p>
+<h1>{{ checklist.name }}</h1>
+<p class="sub">
+  {{ "Evergreen — reset it and run it again." if checklist.evergreen
+     else "One-off — finish it once and it leaves the list." }}
+  {% if checklist.status == "done" %}<strong>Finished.</strong>{% endif %}
+</p>
+
+{% if checklist.status != "done" %}
+<form method="post" action="/checklists/{{ checklist.id }}/items" class="card">
+  <label for="add_title">Add an item</label>
+  <input type="text" id="add_title" name="title" required>
+  <div class="actions"><button type="submit" class="primary">Add</button></div>
+</form>
+{% endif %}
+
+{% if not items %}
+  <p class="empty">Nothing on this list yet.</p>
+{% else %}
+<div class="card">
+  {% for item in items %}
+  <div class="item">
+    {# Ticking is a checklist-local flag, never the done state — a POST per row
+       keeps it working without any JavaScript. #}
+    <form method="post" action="/checklists/{{ checklist.id }}/items/{{ item.id }}/tick" class="inline-form">
+      <input type="hidden" name="ticked" value="{{ '' if item.ticked else '1' }}">
+      <button type="submit" title="{{ 'Untick' if item.ticked else 'Tick' }}">{{ "☑" if item.ticked else "☐" }}</button>
+    </form>
+
+    <div class="item-body">
+      <div class="item-title">{{ item.title }}</div>
+    </div>
+
+    <form method="post" action="/checklists/{{ checklist.id }}/items/{{ item.id }}/move" class="inline-form">
+      <input type="hidden" name="delta" value="-1">
+      <button type="submit" class="linkish" title="Move up" {% if loop.first %}disabled{% endif %}>↑</button>
+    </form>
+    <form method="post" action="/checklists/{{ checklist.id }}/items/{{ item.id }}/move" class="inline-form">
+      <input type="hidden" name="delta" value="1">
+      <button type="submit" class="linkish" title="Move down" {% if loop.last %}disabled{% endif %}>↓</button>
+    </form>
+
+    <form method="post" action="/items/{{ item.id }}/delete" class="inline-form">
+      <input type="hidden" name="back" value="/checklists/{{ checklist.id }}">
+      <button type="submit" class="linkish" title="Move to trash">✕</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  {% if checklist.evergreen %}
+    <p class="sub" style="margin-top:0">
+      Resetting clears every tick. The items, their order and the list itself stay put.
+    </p>
+    <form method="post" action="/checklists/{{ checklist.id }}/reset" class="inline-form">
+      <button type="submit" class="primary">Reset ticks</button>
+    </form>
+  {% elif checklist.status == "done" %}
+    <form method="post" action="/checklists/{{ checklist.id }}/reopen" class="inline-form">
+      <button type="submit">Reopen</button>
+    </form>
+  {% else %}
+    <p class="sub" style="margin-top:0">
+      {% if all_ticked %}
+        Everything is ticked — mark it done when you're finished.
+      {% else %}
+        A one-off finishes once. Ticking everything does not complete it for you.
+      {% endif %}
+    </p>
+    <form method="post" action="/checklists/{{ checklist.id }}/complete" class="inline-form">
+      <button type="submit" class="primary">Move to Done</button>
+    </form>
+  {% endif %}
+
+  <form method="post" action="/checklists/{{ checklist.id }}/delete" class="inline-form">
+    <button type="submit" class="linkish" title="Delete this checklist and its items">Delete list</button>
+  </form>
+</div>
+
+{% endblock %}

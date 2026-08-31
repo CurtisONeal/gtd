@@ -97,6 +97,21 @@ Three things are deliberate:
 Finishing a book completes it like anything else, so it leaves the page rather
 than sitting at 100%. See ADR-012.
 
+## Checklists
+
+`/checklists` holds sets you *run* rather than tasks you do — what to take to
+the dojo, what to consider when building a Magic deck. Items are ordered within
+their list, and each list is one of two kinds:
+
+- **Evergreen** — run repeatedly. **Reset** clears every tick and leaves the
+  items, their order and the list itself alone. It never completes.
+- **One-off** — "build the shelves". It finishes once and leaves the index.
+  Ticking everything does *not* complete it; the page says so and waits for you.
+
+Ticking is checklist-local and is **not** the Done state. If a tick moved an
+item to Done, reset would have to pull rows back out of Done, and packing a bag
+would litter the Done list every time.
+
 ## CLI
 
 ```bash

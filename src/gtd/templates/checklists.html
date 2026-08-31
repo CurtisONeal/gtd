@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Checklists — GTD{% endblock %}
+{% block content %}
+
+<h1>Checklists</h1>
+<p class="sub">
+  Recurring sets you run rather than tasks you do. Evergreen lists reset and are
+  used again; one-offs finish once and leave.
+</p>
+
+<details class="card">
+  <summary><strong>New checklist</strong></summary>
+  <form method="post" action="/checklists">
+    <label for="new_name">Name</label>
+    <input type="text" id="new_name" name="name" required placeholder="What to take to the dojo">
+    <div class="field-row">
+      <div>
+        <label for="new_evergreen">Kind</label>
+        <label>
+          <input type="checkbox" id="new_evergreen" name="evergreen" value="1" checked>
+          Evergreen — run it again and again
+        </label>
+        <div class="hint">Leave unchecked for a one-off, like “build the shelves”.</div>
+      </div>
+    </div>
+    <div class="actions"><button type="submit" class="primary">Create</button></div>
+  </form>
+</details>
+
+{% if not checklists %}
+  <p class="empty">No checklists yet.</p>
+{% else %}
+<div class="card">
+  {% for c in checklists %}
+  <div class="item">
+    <div class="item-body">
+      <div class="item-title"><a href="/checklists/{{ c.id }}">{{ c.name }}</a></div>
+      <div class="meta">
+        <span>{{ "evergreen" if c.evergreen else "one-off" }}</span>
+        {% if c.item_count %}
+          <span>{{ c.ticked_count }}/{{ c.item_count }} ticked</span>
+        {% else %}
+          <span>empty</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<p class="sub">
+  {% if show_done %}
+    <a href="/checklists">Hide finished</a>
+  {% else %}
+    <a href="/checklists?show_done=1">Show finished one-offs</a>
+  {% endif %}
+</p>
+
+{% if show_done and finished %}
+<h2>Finished</h2>
+<div class="card">
+  {% for c in finished %}
+  <div class="item">
+    <div class="item-body">
+      <div class="item-title">{{ c.name }}</div>
+      <div class="meta"><span>completed {{ c.completed_at[:10] if c.completed_at }}</span></div>
+    </div>
+    <form method="post" action="/checklists/{{ c.id }}/reopen" class="inline-form">
+      <button type="submit" class="linkish" title="Reopen this checklist">↩</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% endblock %}

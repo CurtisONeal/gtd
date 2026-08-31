@@ -120,11 +120,12 @@ def _schema_at(version: int) -> str:
     these tests honest instead of quietly making them test nothing.
     """
     added = _columns_added_after(version)
-    kept = [
-        line
-        for line in SCHEMA.splitlines()
-        if line.strip().split(" ")[0] not in added
-    ]
+    kept = []
+    for line in SCHEMA.splitlines():
+        # The column definition itself.
+        if line.strip().split(" ")[0] in added:
+            continue
+        kept.append(line)
     return "\n".join(kept)
 
 
@@ -138,20 +139,22 @@ def test_migrating_from_each_previous_version_reaches_existing_data(tmp_path, fr
     """
     start = from_version - 1
     path = tmp_path / f"v{start}.db"
-    old_schema = _schema_at(start)
     expected = _columns_added_after(start)
     assert expected, "nothing to migrate — the fixture would prove nothing"
-    for column in expected:
-        assert column not in old_schema
 
     conn = sqlite3.connect(path)
-    conn.executescript(old_schema)
+    conn.executescript(_schema_at(start))
     conn.execute("INSERT INTO schema_version (version) VALUES (?)", (start,))
     conn.execute(
         "INSERT INTO items (title, created_at, updated_at) VALUES (?, ?, ?)",
         ("pre-existing", "2026-01-01", "2026-01-01"),
     )
     conn.commit()
+
+    # Check the built table, not the schema text: column names also appear in
+    # comments, and it is the actual absence that makes the fixture meaningful.
+    before = {row[1] for row in conn.execute("PRAGMA table_info(items)")}
+    assert not (expected & before), f"fixture already has {expected & before}"
     conn.close()
 
     Database(path).init_schema(seed_defaults=False)
