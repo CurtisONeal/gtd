@@ -9,8 +9,10 @@ import argparse
 import getpass
 import secrets
 import sys
+import tempfile
 from pathlib import Path
 
+from . import backup
 from .auth import MIN_PASSWORD_LENGTH, hash_password
 from .config import PROJECT_ROOT, load_settings
 from .db import Database
@@ -96,6 +98,96 @@ def cmd_status(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backup(args: argparse.Namespace) -> int:
+    """Snapshot, verify, optionally ship offsite, then prune."""
+    settings = load_settings()
+    backup_dir = Path(args.to).expanduser() if args.to else settings.backup_dir
+    remote = args.remote if args.remote is not None else settings.backup_remote
+    keep = args.keep if args.keep is not None else settings.backup_keep
+
+    try:
+        snapshot = backup.create_snapshot(settings.db_path, backup_dir)
+    except backup.BackupError as exc:
+        print(f"backup failed: {exc}", file=sys.stderr)
+        return 1
+
+    size_kb = snapshot.size_bytes / 1024
+    print(f"snapshot {snapshot.path}")
+    print(f"  {snapshot.items} items, schema v{snapshot.schema_version}, {size_kb:.0f} KB")
+
+    if remote:
+        try:
+            backup.push(snapshot.path, remote, identity=settings.backup_identity)
+            print(f"  copied to {remote}")
+        except backup.BackupError as exc:
+            # The local snapshot is good; say so, but fail loudly. A backup that
+            # silently stopped going offsite is the worst kind.
+            print(f"offsite copy failed: {exc}", file=sys.stderr)
+            return 1
+    else:
+        print("  no GTD_BACKUP_REMOTE set — local snapshot only")
+
+    removed = backup.prune(backup_dir, keep)
+    if removed:
+        print(f"  pruned {len(removed)} old snapshot(s), keeping {keep}")
+
+    if args.verify_restore:
+        with tempfile.TemporaryDirectory() as tmp:
+            scratch = Path(tmp) / "rehearsal.db"
+            restored = backup.restore(snapshot.path, scratch, keep_previous=False)
+            print(
+                f"  rehearsed restore into a scratch copy: "
+                f"{restored.items} items, schema v{restored.schema_version}"
+            )
+    return 0
+
+
+def cmd_backups(_args: argparse.Namespace) -> int:
+    settings = load_settings()
+    snapshots = backup.list_snapshots(settings.backup_dir)
+    if not snapshots:
+        print(f"No snapshots in {settings.backup_dir}")
+        return 0
+    print(f"{len(snapshots)} snapshot(s) in {settings.backup_dir}, newest first:")
+    for path in snapshots:
+        try:
+            info = backup.inspect(path)
+            print(f"  {path.name}  {info.items} items  v{info.schema_version}")
+        except backup.BackupError as exc:
+            print(f"  {path.name}  UNREADABLE — {exc}")
+    return 0
+
+
+def cmd_restore(args: argparse.Namespace) -> int:
+    settings = load_settings()
+    source = Path(args.snapshot).expanduser()
+    if not source.is_absolute() and not source.exists():
+        source = settings.backup_dir / args.snapshot
+
+    try:
+        info = backup.inspect(source)
+    except backup.BackupError as exc:
+        print(f"refusing to restore: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"About to replace {settings.db_path}")
+    print(f"  with {source}")
+    print(f"  ({info.items} items, schema v{info.schema_version})")
+    if not args.yes:
+        print("\nStop the server first, then re-run with --yes to proceed.")
+        return 1
+
+    try:
+        restored = backup.restore(source, settings.db_path)
+    except backup.BackupError as exc:
+        print(f"restore failed: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"restored: {restored.items} items, schema v{restored.schema_version}")
+    print("The database it replaced was kept alongside it as *.replaced-*.")
+    return 0
+
+
 def cmd_gen_secret(_args: argparse.Namespace) -> int:
     """Print a session secret suitable for GTD_SESSION_SECRET."""
     print(secrets.token_urlsafe(48))
@@ -165,6 +257,26 @@ def build_parser() -> argparse.ArgumentParser:
     sv.set_defaults(func=cmd_serve)
 
     sub.add_parser("status", help="Show counts per list").set_defaults(func=cmd_status)
+    bp = sub.add_parser("backup", help="Snapshot the database, verify it, copy it offsite")
+    bp.add_argument("--to", help="Directory for snapshots (default GTD_BACKUP_DIR)")
+    bp.add_argument("--remote", help="user@host:/path (default GTD_BACKUP_REMOTE)")
+    bp.add_argument("--keep", type=int, help="How many snapshots to retain")
+    bp.add_argument(
+        "--verify-restore",
+        action="store_true",
+        help="Also rehearse a restore into a scratch copy",
+    )
+    bp.set_defaults(func=cmd_backup)
+
+    sub.add_parser("backups", help="List snapshots and check each is readable").set_defaults(
+        func=cmd_backups
+    )
+
+    rp = sub.add_parser("restore", help="Replace the database with a snapshot")
+    rp.add_argument("snapshot", help="Snapshot filename or path")
+    rp.add_argument("--yes", action="store_true", help="Actually do it")
+    rp.set_defaults(func=cmd_restore)
+
     sub.add_parser("gen-secret", help="Print a session secret for .env").set_defaults(
         func=cmd_gen_secret
     )

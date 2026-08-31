@@ -56,6 +56,13 @@ class Settings:
     local_only: bool
     host: str
     port: int
+    # Defaulted so a Settings can still be built field-by-field (tests do) without
+    # every caller having to care about backups. `load_settings` always supplies
+    # them from the environment.
+    backup_dir: Path = Path("backups")
+    backup_remote: str | None = None
+    backup_keep: int = 14
+    backup_identity: Path | None = None
 
     @property
     def capture_api_enabled(self) -> bool:
@@ -92,4 +99,13 @@ def load_settings(env_file: Path | None = None) -> Settings:
         local_only=_as_bool(os.environ.get("GTD_LOCAL_ONLY"), False),
         host=os.environ.get("GTD_HOST", "127.0.0.1").strip() or "127.0.0.1",
         port=int(os.environ.get("GTD_PORT", 8765)),
+        backup_dir=_resolve(os.environ.get("GTD_BACKUP_DIR", "backups")),
+        # user@host:/path — where snapshots are copied after being verified.
+        backup_remote=os.environ.get("GTD_BACKUP_REMOTE", "").strip() or None,
+        backup_keep=int(os.environ.get("GTD_BACKUP_KEEP", 14)),
+        backup_identity=(
+            Path(os.environ["GTD_BACKUP_IDENTITY"]).expanduser()
+            if os.environ.get("GTD_BACKUP_IDENTITY", "").strip()
+            else None
+        ),
     )

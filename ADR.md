@@ -401,3 +401,53 @@ Evergreen lists **reset**, clearing ticks and nothing else. One-offs
   reviewed as projects. That decision belongs there, not here.
 - Deleting a checklist cascades to its items, which is why they are items of the
   list rather than free-floating rows that merely reference it.
+
+## ADR-014: Backups go to a second machine over Tailscale
+
+**Status:** Accepted
+
+**Context.** The app became something to depend on daily, and there was no
+backup of the database anywhere — nor of the machine: `tmutil` reported no Time
+Machine destination configured. `exports/` is markdown: useful for reading,
+lossy, and not a restore path. Meanwhile constraint 4 says "nothing leaves the
+machine", which appears to forbid any offsite copy at all.
+
+**Decision.** Snapshots are taken with SQLite's `VACUUM INTO`, verified as they
+are written, and copied over SSH to a second machine on the tailnet that the
+user owns. A daily launchd timer runs it. `gtd restore` replaces the database
+from a snapshot, refusing anything that does not verify, and keeping the
+database it replaced.
+
+Constraint 4 is read as *no third party holds the data*, not *no bytes may ever
+move*. A second machine of the user's own, over an encrypted tailnet link, does
+not break that. Sending snapshots to a cloud provider would, unless they are
+encrypted client-side first — which remains available as a later phase and is
+the complement to this one, not a substitute.
+
+**Evaluation.**
+- `VACUUM INTO` rather than a file copy is not a preference. In a direct test, a
+  naive `cp` of a WAL-mode database produced a file where even the schema was
+  missing (`no such table`), because it was still in the `-wal` sidecar. Any
+  file-level backup, Time Machine included, has the same exposure.
+- Verification happens at write time, not restore time. A snapshot that fails
+  its integrity check is deleted rather than left on disk looking like
+  protection.
+- `restore` checks that the file is a *GTD* database, not merely valid SQLite,
+  because restoring an unrelated database would destroy the real one.
+- The replaced database is moved aside rather than deleted. Restoring the wrong
+  snapshot should not be the end of the story.
+- `scp` is shelled out to rather than adding an SSH library: the transport
+  already exists, and credentials stay in the user's SSH config rather than in
+  this app.
+
+**Consequences.**
+- The offsite copy only protects against losing one machine, not against losing
+  the house. That is the accepted limit of this phase.
+- It depends on the second machine being reachable sometimes. A failed copy
+  exits non-zero and says so; a backup that quietly stopped going offsite is the
+  failure mode worth being loud about.
+- `.env` is deliberately *not* backed up. It holds secrets, and nothing in it is
+  needed to recover data — the password hash lives in the database, and a new
+  session secret can be generated with `gtd gen-secret`. Losing it logs sessions
+  out; it does not lose anything.
+- Backups contain real data and are gitignored, as is any `*.replaced-*` file.

@@ -23,7 +23,7 @@ cd ~/dev/gtd
 uv run gtd init-db
 
 # 2. Set your login (you choose the password; only its hash is stored)
-sΩ`
+uv run gtd set-password
 
 # 3. Run it
 uv run uvicorn gtd.web:app --port 8765
@@ -134,6 +134,9 @@ uv run gtd capture "..."    # capture straight to the inbox
 uv run gtd status           # counts per list, stalled project count
 uv run gtd export           # write markdown copies of every list
 uv run gtd serve            # run the web server (honours GTD_LOCAL_ONLY)
+uv run gtd backup           # verified snapshot, copied offsite, old ones pruned
+uv run gtd backups          # list snapshots, checking each is readable
+uv run gtd restore <snap>   # replace the database from a snapshot
 uv run gtd gen-secret       # print a session secret for .env
 ```
 
@@ -295,6 +298,48 @@ reverse proxy to manage), or nginx/Caddy in front. **Then**, and only then, set
 
 Nothing in the code assumes localhost, so moving between phases is a `.env` and
 a `--host` change.
+
+## Backups
+
+The database is the point, and `exports/` is markdown — lossy, and not a restore
+path. `gtd backup` is.
+
+```bash
+uv run gtd backup                    # snapshot, verify, copy offsite, prune
+uv run gtd backup --verify-restore   # also rehearse a restore into a scratch copy
+uv run gtd backups                   # list snapshots, checking each is readable
+uv run gtd restore <snapshot> --yes  # replace the database (stop the server first)
+```
+
+**A snapshot is not a file copy.** The database runs in WAL mode, so committed
+data can be sitting in the `-wal` sidecar. Copying just the `.db` can produce a
+file that is not merely stale but unusable — in a direct test, a naive `cp` of a
+WAL-mode database yielded `no such table`, because even the schema was still in
+the log. `gtd backup` uses SQLite's `VACUUM INTO`, which is safe while the
+server is running. The same caveat applies to Time Machine and any other
+file-level backup: useful, but not a guarantee for an open SQLite database.
+
+**Every snapshot is verified as it is written** — integrity-checked and opened
+to confirm it is a GTD database, not just valid SQLite. A snapshot that fails is
+deleted rather than left looking like protection. `restore` re-checks before
+overwriting anything, and moves the replaced database aside as `*.replaced-*`.
+
+Configure the offsite copy in `.env` (see `.env.example`):
+
+```bash
+GTD_BACKUP_REMOTE=user@100.x.y.z:/Users/user/gtd-backups/
+GTD_BACKUP_IDENTITY=~/.ssh/gtd_backup
+GTD_BACKUP_KEEP=14
+```
+
+The target is another machine on the tailnet — hardware you own, encrypted
+transport, no third party. That is a deliberate reading of "nothing leaves the
+machine": the constraint exists so nobody else holds your data, and a second
+machine of your own does not break it. Sending snapshots to a cloud provider
+would, unless they are encrypted first. See ADR-014.
+
+`local.gtd-backup.plist` runs it daily at 03:15, and at load, so a machine that
+was asleep still catches up.
 
 ## Capture from elsewhere
 

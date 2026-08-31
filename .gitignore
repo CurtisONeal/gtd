@@ -19,3 +19,7 @@ wheels/
 
 # Generated markdown exports
 exports/
+
+# Snapshots of the database — real data, never committed.
+backups/
+*.replaced-*
