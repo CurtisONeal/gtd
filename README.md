@@ -82,6 +82,35 @@ only route: each of Next Actions, Waiting For, Someday and Reference has an
 the edit page can move any item to any list. Done and Trash have no add form —
 they are outcomes, not destinations.
 
+## Recurring tasks
+
+Any next action can repeat. Set it on the edit page, two ways:
+
+- **Every N days / weeks / months / years** — "change the furnace filter every
+  3 months".
+- **On chosen days** — any combination of the seven days. Garbage day is a
+  Wednesday; a stand-up is Mon–Fri. The whole week reads back as "every day",
+  Mon–Fri as "every weekday", Sat+Sun as "every weekend".
+
+Intervals also choose what the clock runs from. **The schedule** keeps the
+cadence: due Monday, finished Wednesday, a weekly task returns the following
+Monday. **Completion** restarts it: water the plants five days after you last
+actually watered them.
+
+Completing a repeating task files it under Done and creates the next
+occurrence, deferred to its date. Two consequences worth knowing:
+
+- **Done accumulates history.** A daily task leaves a row a day. That is
+  deliberate — it is how you can tell you have done something two hundred times.
+- **Missed occurrences are never backfilled.** Three days late on a daily task
+  produces one next occurrence, not three.
+
+It rides the existing tickler rather than adding a scheduler: the next
+occurrence is an ordinary Next Action with `defer_until` set, hidden until its
+date, with the count of hidden items disclosed as usual. Month-ends clamp — 31
+January plus a month is 28 February, not 3 March, so a monthly task cannot drift
+later every time it repeats. See ADR-015.
+
 ## Books
 
 `/books` is an *ordered* list rather than an actionable one. Books are grouped

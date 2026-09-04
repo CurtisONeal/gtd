@@ -93,6 +93,24 @@ src/gtd/
 └── static/      style.css — the entire frontend
 ```
 
+## Recurring tasks
+
+A next action can carry a repeat rule; completing it files it under Done and
+inserts the next occurrence with `defer_until` set. See ADR-015 and
+`recurrence.py`, which is pure date arithmetic and deliberately has no database
+access.
+
+- **It rides the tickler, not a scheduler.** There is no background job. The
+  successor is an ordinary Next Action hidden until its date.
+- **Never backfill.** Finishing late produces one occurrence, not the whole
+  missed run. `next_occurrence` is always strictly after today.
+- **Month-ends clamp.** 31 January + 1 month is 28 February. Rolling over would
+  push a monthly task later on every repeat.
+- **Dependencies and `waiting_on` do not carry forward** — a prerequisite
+  satisfied once must not be recreated, or the successor appears pre-blocked.
+- Days are stored as a comma set of `mon`…`sun`. `describe()` collapses the
+  common shapes into "every weekday" / "every weekend" / "every day".
+
 ## Ordered lists
 
 Books, checklists and technology projects are one concept: an ordered,
@@ -124,14 +142,16 @@ ADR-012 and ADR-013.
   `source`.
 - **Timestamps need microsecond precision.** A brain dump creates many items in
   the same second; second-precision timestamps tie and break FIFO ordering.
-- **`app = create_app()` runs at import, and that is no longer harmless.**
-  Importing `gtd.web` calls `init_schema()` against whatever `GTD_DB_PATH`
-  resolves to, and it defaults to `gtd.db` *relative to the working directory*.
-  Since `init_schema` now applies migrations (`ALTER TABLE`), not just
-  `CREATE TABLE IF NOT EXISTS`, importing `gtd.web` from the repo root touches
-  the live database. `tests/conftest.py` redirects `GTD_DB_PATH` to a temp file
-  before any test module is imported; do not remove that, and do not assume a
-  script that merely imports `gtd.web` is read-only.
+- **`gtd.web.app` is built lazily — keep it that way.** It used to be
+  `app = create_app()` at module level, which calls `init_schema()` against
+  whatever `GTD_DB_PATH` resolves to (`gtd.db` relative to the working
+  directory). Once `init_schema` applied migrations, *any* import from the repo
+  root altered the live database — a test collecting, a syntax check. That
+  happened twice, the second time after the hazard was already written down
+  here. `web.py` now builds the app in a module-level `__getattr__`, so
+  `uvicorn gtd.web:app` works and a bare import does nothing. Do not restore
+  eager construction. `tests/conftest.py` also redirects `GTD_DB_PATH`; that is
+  belt and braces, keep both.
 - **Adding a column means adding a migration.** `CREATE TABLE IF NOT EXISTS` is
   a no-op on an existing database, so a column added only to `SCHEMA` reaches
   fresh installs and nothing else. Bump `SCHEMA_VERSION` and add the statement

@@ -4,6 +4,7 @@ The property that matters is not "a file appeared" but that the file is a
 sound, complete database — and that a bad one is refused rather than restored.
 """
 
+import os
 import sqlite3
 
 import pytest
@@ -185,3 +186,48 @@ def test_push_reports_failure_rather_than_pretending(tmp_path, populated):
 
     with pytest.raises(backup.BackupError, match="failed"):
         backup.push(snapshot.path, "nonexistent-host-xyz:/tmp/nope", identity=None)
+
+
+def test_importing_web_does_not_touch_a_database(tmp_path):
+    """Importing `gtd.web` used to run create_app() at module level, which calls
+    init_schema() against GTD_DB_PATH — so a syntax check or a test collection
+    from the repo root migrated the *live* database. Twice.
+
+    Runs in a subprocess because this process has already imported gtd.web.
+    """
+    import subprocess
+    import sys
+
+    target = tmp_path / "must-not-exist.db"
+    env = {
+        **os.environ,
+        "GTD_DB_PATH": str(target),
+        "GTD_SESSION_SECRET": "a-secret-long-enough-for-settings",
+    }
+    result = subprocess.run(
+        [sys.executable, "-c", "import gtd.web"],
+        capture_output=True, text=True, env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not target.exists(), "importing gtd.web created a database"
+
+
+def test_accessing_web_app_still_builds_it(tmp_path):
+    """The other half: `uvicorn gtd.web:app` must keep working."""
+    import subprocess
+    import sys
+
+    target = tmp_path / "created-on-access.db"
+    env = {
+        **os.environ,
+        "GTD_DB_PATH": str(target),
+        "GTD_SESSION_SECRET": "a-secret-long-enough-for-settings",
+    }
+    result = subprocess.run(
+        [sys.executable, "-c", "import gtd.web; assert gtd.web.app is not None"],
+        capture_output=True, text=True, env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert target.exists(), "gtd.web:app must still build the app for uvicorn"

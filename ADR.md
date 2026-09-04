@@ -451,3 +451,55 @@ the complement to this one, not a substitute.
   session secret can be generated with `gtd gen-secret`. Losing it logs sessions
   out; it does not lose anything.
 - Backups contain real data and are gitignored, as is any `*.replaced-*` file.
+
+## ADR-015: Recurring tasks spawn instances on the tickler
+
+**Status:** Accepted
+
+**Context.** Recurrence had been deliberately absent, on the grounds that GTD
+handles repetition with the calendar and the tickler, and `defer_until` already
+provides a tickler. That held until daily commitments — medication, a stand-up —
+needed to come back on their own. The open question in `HUMAN_PLANS.md` was
+whether true recurrence was wanted or whether the tickler sufficed.
+
+**Decision.** A next action can carry a repeat rule. Completing it files it under
+Done and inserts the *next occurrence* as a new item with `defer_until` set.
+
+Two rule kinds, because neither subsumes the other: an interval (every N days /
+weeks / months / years) or a set of individual weekdays. Intervals also choose
+an anchor — the planned date, or the completion date.
+
+**Evaluation.**
+- **Spawning, not re-arming a single row.** Re-arming would keep Done clean but
+  destroy the record of having done something. Completion history is what makes
+  "am I actually taking this daily?" answerable, and this codebase already
+  prefers disclosure over tidiness.
+- **On the tickler, not a scheduler.** The successor is an ordinary Next Action
+  hidden by `defer_until`. No background job, no clock — the app stays
+  deterministic and works the same whether it ran overnight or not.
+- **Never backfill.** Finishing three days late produces one occurrence.
+  Catch-up items for a daily habit are noise, and a task that generates a
+  backlog while you are away is a reason to stop trusting the system.
+- **The anchor is a real distinction.** Medication is fixed to the schedule; a
+  furnace filter runs from when you last changed it. Supporting only one would
+  quietly produce wrong dates for the other.
+- **Month-ends clamp rather than roll over.** 31 January plus a month is 28
+  February. Rolling into March would push a monthly task later on every repeat.
+- **Days are individual, not grouped.** A weekday/Saturday/Sunday grouping was
+  considered first and rejected on a concrete case: the bins go out on a
+  Wednesday. Storing a comma set of the seven days makes any combination
+  expressible, and `describe()` collapses the common shapes back into "every
+  weekday" / "every weekend" / "every day" so a stand-up does not read as a list
+  of five days.
+
+**Consequences.**
+- Done grows at the rate of the recurrence. A daily task is ~365 rows a year.
+  Accepted for the history it buys; if it becomes unpleasant, the answer is a
+  Done view that groups by `recurs_from_id`, not abandoning instances.
+- Dependencies and `waiting_on` are deliberately not carried forward. A
+  prerequisite satisfied once must not be recreated, or the successor would
+  appear already blocked.
+- A deadline moves with the occurrence, so a monthly bill does not keep the
+  first month's due date.
+- `recurs_from_id` links an occurrence to the one it came from, which is what a
+  future "how often do I actually do this?" view would hang off.

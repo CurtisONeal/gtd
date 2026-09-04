@@ -144,6 +144,9 @@
         {% if item.defer_until and item.defer_until > today %}
           <span class="deferred">hidden until {{ item.defer_until }}</span>
         {% endif %}
+        {% if item.repeat_unit or item.repeat_days %}
+          <span class="repeats">repeats {{ repeat_label(item) }}</span>
+        {% endif %}
       </div>
     </div>
 

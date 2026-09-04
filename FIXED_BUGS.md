@@ -114,3 +114,24 @@ all at rank 0.
 - `test_a_restored_book_does_not_collide_with_a_live_rank`
 - `test_restore_route_sends_a_book_home_not_to_next_actions`
 - `test_restore_still_works_normally_for_non_books`
+
+## 2026-09-04 — Importing `gtd.web` migrated the live database, again
+
+**Symptom.** A `python -c "import gtd.web"` syntax check, run from the repo
+root, silently migrated the live `gtd.db` from v5 to v6.
+
+**Cause.** The same root cause as the 2026-08-30 test-suite entry: `web.py` ran
+`app = create_app()` at module level, and `create_app` calls `init_schema()`
+against whatever `GTD_DB_PATH` resolves to — `./gtd.db` by default. The earlier
+fix only redirected the path for *tests*; every other import remained live.
+
+**Fix.** `app` is now built lazily via a module-level `__getattr__` (PEP 562).
+`uvicorn gtd.web:app` still works, because attribute access triggers it, but
+importing the module no longer touches any database.
+
+Documenting the hazard was not sufficient — it was written up in `AGENTS.md`
+and then walked into anyway. The import is now inert by construction.
+
+**Regression test.** `test_importing_web_does_not_touch_a_database`, which
+imports the module in a subprocess with `GTD_DB_PATH` pointed at a path that
+must not come into existence.

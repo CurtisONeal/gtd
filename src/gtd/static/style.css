@@ -171,6 +171,7 @@ button.linkish:hover { color: var(--text); text-decoration: underline; }
 .meta span:not(:last-child)::after { content: " · "; }
 .meta .overdue { color: var(--danger); font-weight: 600; }
 .meta .deferred { color: var(--warn); }
+.meta .repeats  { color: var(--muted); }
 
 .counts { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0 0; padding: 0; list-style: none; }
 .counts a {
@@ -208,3 +209,6 @@ button.linkish:hover { color: var(--text); text-decoration: underline; }
 .step-hint { color: var(--muted); font-size: 0.85rem; margin-top: 1.25rem; }
 
 .login-wrap { max-width: 22rem; margin: 4rem auto; }
+
+.daypicker { display: flex; flex-wrap: wrap; gap: 0.5rem 0.9rem; }
+.daypicker label { white-space: nowrap; }

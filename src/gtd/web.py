@@ -28,6 +28,7 @@ from .auth import SESSION_USER_KEY, LoginRateLimiter, verify_password
 from .config import Settings, load_settings
 from .db import Database
 from .export import export_all
+from . import recurrence
 from .models import (
     BOOK_CATEGORY_LABELS,
     PERCENT_BUCKETS,
@@ -148,6 +149,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
         base.update(ctx)
         return templates.TemplateResponse(request, template, base)
+
+    # One source of truth for how a rule reads, shared by every template.
+    templates.env.globals["repeat_label"] = lambda row: recurrence.describe(
+        recurrence.rule_from_row(row)
+    )
 
     # ── Login ────────────────────────────────────────────────────────────────
 
@@ -676,6 +682,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             time_estimates=TIME_ESTIMATES,
             state_choices=[(str(s), STATE_LABELS[s]) for s in ItemState],
+            repeat=recurrence.rule_from_row(item),
+            day_choices=[(str(d), recurrence.DAY_LABELS[d]) for d in recurrence.RepeatDays],
+            repeat_description=recurrence.describe(recurrence.rule_from_row(item)),
         )
 
     @app.post("/items/{item_id}/edit")
@@ -694,6 +703,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         defer_until: str = Form(""),
         waiting_on: str = Form(""),
         blocking_item_id: str = Form(""),
+        repeat_mode: str = Form(""),
+        repeat_every: str = Form(""),
+        repeat_unit: str = Form(""),
+        repeat_days: list[str] = Form([]),
+        repeat_from: str = Form("schedule"),
         back: str = Form("/list/next_action"),
     ):
         if state not in {str(s) for s in ItemState}:
@@ -714,6 +728,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             defer_until=_str_or_none(defer_until),
             waiting_on=_str_or_none(waiting_on),
         )
+        # The mode picker decides which set of inputs counts, so leftover values
+        # in the other one cannot resurrect a rule the user just turned off.
+        if repeat_mode == "days":
+            store.set_recurrence(item_id, days=set(repeat_days), anchor=repeat_from)
+        elif repeat_mode == "interval":
+            try:
+                store.set_recurrence(
+                    item_id,
+                    every=_int_or_none(repeat_every),
+                    unit=_str_or_none(repeat_unit),
+                    anchor=repeat_from,
+                )
+            except ValueError:
+                store.set_recurrence(item_id)
+        else:
+            store.set_recurrence(item_id)
+
         blocker = _int_or_none(blocking_item_id)
         if state == ItemState.WAITING_FOR and blocker is not None:
             store.replace_dependencies(item_id, [blocker])
@@ -776,4 +807,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     return app
 
 
-app = create_app()
+def __getattr__(name: str):
+    """Build the app on first *access* of `gtd.web.app`, not at import.
+
+    `uvicorn gtd.web:app` is unaffected — it looks the attribute up, which
+    triggers this. But merely importing this module no longer opens, creates and
+    migrates whatever database `GTD_DB_PATH` points at.
+
+    That mattered: `create_app()` used to run at import, so a test collecting, a
+    script checking syntax, or any `python -c "import gtd.web"` from the repo
+    root silently ran migrations against the *live* database. It happened twice.
+    Documenting the hazard was not enough, so the import is now inert.
+    """
+    if name == "app":
+        application = create_app()
+        globals()["app"] = application  # cached; created once per process
+        return application
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -108,6 +108,62 @@
     </div>
   </div>
 
+  <fieldset>
+    <legend>Repeat <span class="hint">— currently {{ repeat_description }}</span></legend>
+    <p class="sub" style="margin-top:0">
+      Completing a repeating task files it under Done and creates the next one,
+      hidden until its date.
+    </p>
+
+    <div class="field-row">
+      <div>
+        <label for="repeat_mode">How</label>
+        <select id="repeat_mode" name="repeat_mode">
+          <option value="" {% if not repeat.is_recurring %}selected{% endif %}>Does not repeat</option>
+          <option value="interval" {% if repeat.every %}selected{% endif %}>Every…</option>
+          <option value="days" {% if repeat.days %}selected{% endif %}>On chosen days</option>
+        </select>
+      </div>
+      <div>
+        <label for="repeat_every">Every</label>
+        <input type="number" id="repeat_every" name="repeat_every" min="1" step="1"
+               value="{{ repeat.every or 1 }}" style="max-width:5rem">
+      </div>
+      <div>
+        <label for="repeat_unit">Unit</label>
+        <select id="repeat_unit" name="repeat_unit">
+          {% for unit in ("day", "week", "month", "year") %}
+          <option value="{{ unit }}" {% if repeat.unit == unit %}selected{% endif %}>{{ unit }}s</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div>
+        <label>On these days</label>
+        <div class="daypicker">
+          {% for value, label in day_choices %}
+          <label><input type="checkbox" name="repeat_days" value="{{ value }}"
+                 {% if value in repeat.days %}checked{% endif %}> {{ label[:3] }}</label>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <label for="repeat_from">Count from</label>
+        <select id="repeat_from" name="repeat_from">
+          <option value="schedule" {% if repeat.anchor != "completion" %}selected{% endif %}>
+            The schedule — keeps its cadence if you finish late
+          </option>
+          <option value="completion" {% if repeat.anchor == "completion" %}selected{% endif %}>
+            When I complete it — the clock restarts
+          </option>
+        </select>
+        <div class="hint">Only applies to “Every…”; chosen days always land on that day.</div>
+      </div>
+    </div>
+  </fieldset>
+
   <div class="actions">
     <button type="submit" class="primary">Save</button>
     <a class="btn" href="{{ back }}">Cancel</a>

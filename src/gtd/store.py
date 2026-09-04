@@ -11,6 +11,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Sequence
 
 from .db import Database
+from . import recurrence
 from .models import ChecklistStatus, ItemState, ProjectStatus, Source
 
 
@@ -84,6 +85,8 @@ class Store:
             "waiting_on", "rank", "source",
             "book_category", "started", "started_on", "percent_complete", "is_audio",
             "checklist_id", "ticked",
+            "repeat_every", "repeat_unit", "repeat_days", "repeat_from",
+            "recurs_from_id",
         }
         unknown = set(fields) - allowed
         if unknown:
@@ -124,7 +127,12 @@ class Store:
         one UPDATE, no cross-table bookkeeping."""
         self.update_item(item_id, state=str(state), **fields)
 
-    def complete(self, item_id: int) -> None:
+    def complete(self, item_id: int) -> int | None:
+        """Mark done, unblock dependents, and spawn the next occurrence.
+
+        Returns the id of the occurrence created, if the item repeats.
+        """
+        next_id = self._spawn_next_occurrence(item_id)
         now = _now()
         with self.db.connect() as conn:
             conn.execute(
@@ -166,6 +174,109 @@ class Store:
                         "DELETE FROM item_dependencies WHERE blocked_item_id = ?",
                         (blocked_id,),
                     )
+        return next_id
+
+    # ── Recurrence ───────────────────────────────────────────────────────────
+    #
+    # A repeating task spawns its next occurrence when it is completed. The
+    # completed one stays in Done, so "did I actually do this?" has an answer —
+    # which is the whole point of a recurring reminder.
+    #
+    # This rides on the tickler rather than inventing a scheduler: the new
+    # occurrence is an ordinary Next Action with `defer_until` set, so it is
+    # hidden until its date by machinery that already exists, and the list
+    # already discloses how many it is withholding.
+
+    # Copied to the next occurrence. Deliberately excludes dependencies,
+    # `waiting_on` and any book/checklist columns: a repeating task is a next
+    # action, and carrying blockers forward would recreate a wait that was
+    # already satisfied.
+    _RECURRING_FIELDS = (
+        "title", "notes", "project_id", "context_id", "area_id", "energy",
+        "time_estimate_min", "priority", "source",
+        "repeat_every", "repeat_unit", "repeat_days", "repeat_from",
+    )
+
+    def _spawn_next_occurrence(self, item_id: int) -> int | None:
+        """Create the next occurrence of a repeating item, if it repeats."""
+        item = self.get_item(item_id)
+        if item is None or item["state"] == ItemState.DONE:
+            # Completing something already done must not mint another copy.
+            return None
+
+        rule = recurrence.rule_from_row(item)
+        if not rule.is_recurring:
+            return None
+
+        today = date.today()
+        if rule.anchor == recurrence.RepeatFrom.COMPLETION:
+            anchor = today
+        else:
+            # Keep the planned cadence: prefer the date this occurrence was
+            # actually meant for, and fall back to today if it had none.
+            planned = item["defer_until"] or item["due_date"]
+            anchor = date.fromisoformat(planned) if planned else today
+
+        try:
+            following = recurrence.next_occurrence(rule, anchor=anchor, today=today)
+        except recurrence.RecurrenceError:
+            # A malformed rule must not block completing the task.
+            return None
+        if following is None:
+            return None
+
+        values = {field: item[field] for field in self._RECURRING_FIELDS}
+        values["state"] = str(ItemState.NEXT_ACTION)
+        values["defer_until"] = following.isoformat()
+        # A deadline travels with the occurrence; without this a monthly bill
+        # would keep the first month's due date forever.
+        values["due_date"] = following.isoformat() if item["due_date"] else None
+        values["recurs_from_id"] = item_id
+
+        now = _now()
+        columns = ", ".join(values)
+        placeholders = ", ".join("?" for _ in values)
+        with self.db.connect() as conn:
+            cur = conn.execute(
+                f"""INSERT INTO items ({columns}, created_at, updated_at)
+                    VALUES ({placeholders}, ?, ?)""",
+                (*values.values(), now, now),
+            )
+            return cur.lastrowid
+
+    def set_recurrence(
+        self,
+        item_id: int,
+        *,
+        every: int | None = None,
+        unit: str | None = None,
+        days: set[str] | frozenset[str] | None = None,
+        anchor: str = recurrence.RepeatFrom.SCHEDULE,
+    ) -> None:
+        """Set or clear an item's repeat rule.
+
+        Interval and day-of-week are mutually exclusive; setting one clears the
+        other, so a rule can never be half of each.
+        """
+        stored_days = recurrence.format_days(days)
+        if stored_days:
+            every, unit = None, None
+        elif every is not None and unit is not None:
+            if every < 1:
+                raise ValueError("repeat interval must be at least 1")
+            if unit not in {str(u) for u in recurrence.RepeatUnit}:
+                raise ValueError(f"unknown repeat unit: {unit}")
+        else:
+            every, unit = None, None
+
+        repeats = bool(stored_days or (every and unit))
+        self.update_item(
+            item_id,
+            repeat_every=every,
+            repeat_unit=unit,
+            repeat_days=stored_days,
+            repeat_from=str(anchor) if repeats else None,
+        )
 
     def uncomplete(self, item_id: int, *, state: str = ItemState.NEXT_ACTION) -> None:
         """Reversing completion is a single UPDATE — no archive row to hunt down."""

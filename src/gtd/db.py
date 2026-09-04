@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -98,6 +98,13 @@ CREATE TABLE IF NOT EXISTS items (
     -- clears it, and a ticked item must never leave for the Done list.
     checklist_id      INTEGER REFERENCES checklists(id) ON DELETE CASCADE,
     ticked            INTEGER NOT NULL DEFAULT 0,
+    -- Recurrence. Either an interval (repeat_every + repeat_unit) or a set of
+    -- day groups (repeat_days); never both. See recurrence.py.
+    repeat_every      INTEGER,
+    repeat_unit       TEXT,   -- day / week / month / year
+    repeat_days       TEXT,   -- comma set: weekdays / saturday / sunday
+    repeat_from       TEXT,   -- schedule (keep cadence) or completion
+    recurs_from_id    INTEGER REFERENCES items(id) ON DELETE SET NULL,
     created_at        TEXT NOT NULL,
     updated_at        TEXT NOT NULL,
     completed_at      TEXT
@@ -152,6 +159,13 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
         # the new items columns need an ALTER here.
         "ALTER TABLE items ADD COLUMN checklist_id INTEGER REFERENCES checklists(id)",
         "ALTER TABLE items ADD COLUMN ticked INTEGER NOT NULL DEFAULT 0",
+    ),
+    6: (
+        "ALTER TABLE items ADD COLUMN repeat_every INTEGER",
+        "ALTER TABLE items ADD COLUMN repeat_unit TEXT",
+        "ALTER TABLE items ADD COLUMN repeat_days TEXT",
+        "ALTER TABLE items ADD COLUMN repeat_from TEXT",
+        "ALTER TABLE items ADD COLUMN recurs_from_id INTEGER REFERENCES items(id)",
     ),
 }
 
