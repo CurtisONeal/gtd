@@ -168,9 +168,16 @@ ADR-012 and ADR-013.
 - **A new NOT NULL flag needs adding to `boolean` in `update_item`.** An
   unchecked checkbox sends nothing at all, and `_clean` would turn that blank
   into `NULL`. Same trap as the text columns above, different column type.
-- **launchd + uvicorn don't hot-reload.** After editing a plist or source, you
-  must `bootout` then `bootstrap`; `uvicorn` without `--reload` won't see code
-  changes.
+- **launchd + uvicorn don't hot-reload.** After editing a plist or source you
+  must restart; `uvicorn` without `--reload` won't see code changes. But
+  `bootout` immediately followed by `bootstrap` is unreliable: the old process
+  can still hold port 8765, and the job ends up *loaded but never started*
+  (`launchctl print gui/$UID/local.gtd` shows `state = not running`,
+  `runs = 0`). Wait for the port to be released, and verify afterwards —
+  `launchctl list | grep local.gtd` must show a real PID, not `-`. If it does
+  not, `launchctl kickstart -k gui/$UID/local.gtd` starts it.
+- **The service's stderr is `~/Library/Logs/gtd/server.error.log`**, not
+  `server.err`. Tailing the wrong name looks like a clean startup.
 
 ## Testing
 
