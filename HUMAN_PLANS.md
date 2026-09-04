@@ -69,8 +69,30 @@ should end up in `ADR.md` when it lands.
   These are not exclusive: the second Mac for routine recovery plus an encrypted
   offsite copy for disaster is the belt-and-braces version.
 
-  Next action: pick the destination, then build `gtd backup` / `gtd restore`
-  plus a launchd timer, and rehearse a restore before trusting it.
+  **Built 2026-08-30 — local half only.** `gtd backup` / `gtd backups` /
+  `gtd restore` exist and are tested; the first real snapshot is taken. See
+  ADR-014.
+
+  **Parked, waiting on Curtis — one step.** The offsite copy is not running.
+  A dedicated key exists at `~/.ssh/gtd_backup`, but it has not been authorised
+  on `curtiss-mac-mini` (100.102.123.60), which needs that machine's password:
+
+  ```
+  ssh-copy-id -i ~/.ssh/gtd_backup.pub USER@100.102.123.60
+  ```
+
+  Then: set `GTD_BACKUP_REMOTE=USER@100.102.123.60:/Users/USER/gtd-backups/`
+  and `GTD_BACKUP_IDENTITY=~/.ssh/gtd_backup` in `.env`, run a real backup
+  across the tailnet, rehearse a restore, and only then load
+  `~/Library/LaunchAgents/local.gtd-backup.plist` (written, deliberately not
+  loaded — a timer that silently ships nothing is worse than no timer).
+
+  **Until that is done there is exactly one copy of the data, on one machine.**
+
+  Still open, later phases: an encrypted cloud copy for disaster recovery, and
+  Time Machine for the machine as a whole — noting a file-level backup does not
+  guarantee a consistent WAL-mode database, so it complements `gtd backup`
+  rather than replacing it.
 
 - **Weekly Review flow.** Build a guided server-rendered weekly review feature.
   This is the biggest gap versus the method as written: Allen calls weekly
