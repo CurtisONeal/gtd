@@ -114,23 +114,35 @@ should end up in `ADR.md` when it lands.
   GTD instance through `POST /api/capture`, so phone capture does not require
   opening the web UI.
 
+  **Two Discord applications, and they are deliberately separate.**
+
+  | App | Application ID | Notes |
+  |---|---|---|
+  | Hermes gateway | `1513385920114724904` | Pre-existing. Likely owned by the `tiltedperspective2` account — recovered by decoding the first segment of `DISCORD_BOT_TOKEN` in `hermes-home/.env`, which is the base64 application id and is public information |
+  | `direct_scripts_bot` | `1545661198068875305` | The one that will carry `/capture`. Public key `1515cf07…` (interaction verification; not a secret, and not needed for a gateway bot) |
+
+  Sharing one token between them would make two processes fight over the same
+  bot identity, which is why `direct_scripts_bot/README.md` calls for its own.
+
   Current known state:
-  - GTD already has `POST /api/capture`.
-  - The API is disabled until `GTD_CAPTURE_TOKEN` is set.
+  - GTD has `POST /api/capture`, and it is **live**: `GTD_CAPTURE_TOKEN` is set
+    and the endpoint was smoke-tested 2026-09-04 (401 without a token, 401 with
+    a wrong one, capture succeeds with the right one, `source: discord`).
   - `direct_scripts_bot` code exists at
     `/Users/s_admin/Documents/agent_set_up/direct_scripts_bot`.
   - The bot currently has deterministic slash commands for reminders and todos:
     `/add remind`, `/add todo`, `/list remind`, and `/read todos`.
-  - The bot does not yet implement a GTD `/capture` slash command and does not
-    call GTD's `POST /api/capture`.
+  - The bot does not yet implement `/capture` and does not call GTD. Confirmed
+    2026-09-05 by reading `bot.py`: its commands are `add`, `list`, `read`,
+    `remind`, `todo`, `todos`, and there is no reference to GTD anywhere.
   - The bot has `.env.example`, but no local `.env` was present during the
     2026-08-28 check.
   - The launchd plist exists at
     `~/Library/LaunchAgents/local.directscriptsbot.plist`, but
     `local.directscriptsbot` was not loaded during the 2026-08-28 check.
-  - We do not know from local files whether a Discord application for
-    `direct_scripts_bot` already exists. Curtis must check the Discord
-    Developer Portal.
+  - `direct_scripts_bot/.env` is still absent, so the bot has no token locally,
+    even though `bot.log` shows it ran on 2026-08-08/09 — a token existed then
+    and is gone now.
   - `agent_set_up` does include Discord context-reset tooling:
     `scripts/agent/clear_discord_session.sh`, wired to the plain-text Hermes
     verbs `clear tokens` / `clear session`. That is separate from
