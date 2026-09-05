@@ -132,6 +132,31 @@ def cmd_backup(args: argparse.Namespace) -> int:
     else:
         print("  no GTD_BACKUP_REMOTE set — local snapshot only")
 
+    # Cloud copy: the only destination a third party holds, so it is encrypted
+    # without exception. Refusing rather than falling back to plaintext — a
+    # silent downgrade here is how data ends up readable on someone's server.
+    if settings.backup_cloud:
+        if not settings.backup_age_recipient:
+            print(
+                "cloud backup configured but GTD_BACKUP_AGE_RECIPIENT is unset — "
+                "refusing to upload unencrypted",
+                file=sys.stderr,
+            )
+            return 1
+        try:
+            sealed = backup.encrypt(snapshot.path, settings.backup_age_recipient)
+            backup.upload(sealed, settings.backup_cloud)
+            print(f"  encrypted and uploaded to {settings.backup_cloud}")
+        except backup.BackupError as exc:
+            print(f"cloud copy failed: {exc}", file=sys.stderr)
+            return 1
+        finally:
+            # The local .age is a transient artefact; the snapshot itself stays.
+            sealed_path = snapshot.path.with_suffix(
+                snapshot.path.suffix + backup.ENCRYPTED_SUFFIX
+            )
+            sealed_path.unlink(missing_ok=True)
+
     removed = backup.prune(backup_dir, keep)
     if removed:
         print(f"  pruned {len(removed)} old snapshot(s), keeping {keep}")
@@ -168,6 +193,20 @@ def cmd_restore(args: argparse.Namespace) -> int:
     source = Path(args.snapshot).expanduser()
     if not source.is_absolute() and not source.exists():
         source = settings.backup_dir / args.snapshot
+
+    # An encrypted snapshot is decrypted to a scratch file first; the identity
+    # is only needed here, never to take a backup.
+    decrypted_to = None
+    if source.suffix == backup.ENCRYPTED_SUFFIX:
+        identity = settings.backup_age_identity or Path(
+            "~/.config/gtd/age-identity.txt"
+        ).expanduser()
+        decrypted_to = Path(tempfile.mkdtemp()) / source.stem
+        try:
+            source = backup.decrypt(source, identity, decrypted_to)
+        except backup.BackupError as exc:
+            print(f"cannot decrypt: {exc}", file=sys.stderr)
+            return 1
 
     try:
         info = backup.inspect(source)

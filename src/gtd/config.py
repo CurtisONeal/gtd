@@ -63,6 +63,9 @@ class Settings:
     backup_remote: str | None = None
     backup_keep: int = 14
     backup_identity: Path | None = None
+    backup_cloud: str | None = None
+    backup_age_recipient: str | None = None
+    backup_age_identity: Path | None = None
 
     @property
     def capture_api_enabled(self) -> bool:
@@ -106,6 +109,17 @@ def load_settings(env_file: Path | None = None) -> Settings:
         backup_identity=(
             Path(os.environ["GTD_BACKUP_IDENTITY"]).expanduser()
             if os.environ.get("GTD_BACKUP_IDENTITY", "").strip()
+            else None
+        ),
+        # rclone remote, e.g. gdrive:gtd-backups. Anything sent here is
+        # encrypted first — it is the only destination a third party holds.
+        backup_cloud=os.environ.get("GTD_BACKUP_CLOUD", "").strip() or None,
+        # age *public* key. Encrypting needs only this, so the machine taking
+        # backups cannot read its own cloud archive.
+        backup_age_recipient=os.environ.get("GTD_BACKUP_AGE_RECIPIENT", "").strip() or None,
+        backup_age_identity=(
+            Path(os.environ["GTD_BACKUP_AGE_IDENTITY"]).expanduser()
+            if os.environ.get("GTD_BACKUP_AGE_IDENTITY", "").strip()
             else None
         ),
     )

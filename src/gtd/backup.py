@@ -211,6 +211,76 @@ def push(
         )
 
 
+ENCRYPTED_SUFFIX = ".age"
+
+# Full paths: launchd hands jobs a PATH of /usr/bin:/bin:/usr/sbin:/sbin, which
+# does not include Homebrew. Resolving these at call time would work in a shell
+# and fail at 03:15.
+AGE = "/opt/homebrew/bin/age"
+RCLONE = "/opt/homebrew/bin/rclone"
+
+
+def _run(command: list[str], what: str) -> str:
+    result = subprocess.run(command, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise BackupError(f"{what} failed: {result.stderr.strip() or result.returncode}")
+    return result.stdout
+
+
+def encrypt(snapshot: Path, recipient: str) -> Path:
+    """Encrypt a snapshot to an age recipient, returning the `.age` file.
+
+    Only the *public* key is needed to encrypt. That is the point: this machine
+    can produce cloud backups it cannot itself read, so compromising it does not
+    expose the archive. Decryption needs the identity file, which should not
+    live here — see `gtd restore`.
+    """
+    if not shutil.which(AGE) and not Path(AGE).exists():
+        raise BackupError(f"age not found at {AGE} — brew install age")
+
+    target = snapshot.with_suffix(snapshot.suffix + ENCRYPTED_SUFFIX)
+    _run([AGE, "-r", recipient, "-o", str(target), str(snapshot)], f"encrypting {snapshot.name}")
+
+    if not target.exists() or target.stat().st_size == 0:
+        raise BackupError(f"encryption produced nothing for {snapshot.name}")
+    # An encrypted file must not still be a readable database. Cheap check,
+    # and it catches a recipient that silently did nothing.
+    with open(target, "rb") as handle:
+        if handle.read(16).startswith(b"SQLite format 3"):
+            raise BackupError(f"{target} is still plaintext SQLite — refusing to upload")
+    return target
+
+
+def decrypt(encrypted: Path, identity: Path, destination: Path) -> Path:
+    """Decrypt an age file using the identity, and verify what comes out."""
+    if not identity.exists():
+        raise BackupError(
+            f"no age identity at {identity} — without it, encrypted backups "
+            "cannot be read. This is the file that must be kept somewhere else."
+        )
+    _run(
+        [AGE, "-d", "-i", str(identity), "-o", str(destination), str(encrypted)],
+        f"decrypting {encrypted.name}",
+    )
+    inspect(destination)
+    return destination
+
+
+def upload(path: Path, cloud_remote: str) -> None:
+    """Copy a file to an rclone remote, then confirm it is actually there.
+
+    `rclone copy` exiting zero is not proof; listing the far side is.
+    """
+    _run([RCLONE, "copyto", str(path), f"{cloud_remote}/{path.name}"],
+         f"uploading to {cloud_remote}")
+
+    listing = _run([RCLONE, "lsf", cloud_remote], f"listing {cloud_remote}")
+    if path.name not in listing.split():
+        raise BackupError(
+            f"{path.name} is not present at {cloud_remote} after upload"
+        )
+
+
 def restore(snapshot: Path, db_path: Path, *, keep_previous: bool = True) -> Snapshot:
     """Replace the live database with a snapshot.
 
