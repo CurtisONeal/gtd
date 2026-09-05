@@ -359,6 +359,14 @@ ssh -i ~/.ssh/gtd_backup -o BatchMode=yes user@100.x.y.z whoami   # must print t
 (System Settings → General → Sharing → Remote Login). File Sharing is a
 different service and does not enable SSH.
 
+**Send backups to a home directory, not an external volume.** macOS privacy
+protection (TCC) blocks processes started by `sshd` from touching mounted
+external drives, so scp to `/Volumes/...` fails with `Operation not permitted`
+even when the key authenticates and the same path works locally. Granting sshd
+Full Disk Access would fix it, but the home directory works with no special
+permissions — and snapshots are ~112 KB, so the disk-space reasoning that
+usually pushes data onto an external drive does not apply.
+
 Then load the timer, which runs daily at 03:15:
 
 ```bash
