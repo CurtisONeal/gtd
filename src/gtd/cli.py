@@ -117,7 +117,12 @@ def cmd_backup(args: argparse.Namespace) -> int:
 
     if remote:
         try:
-            backup.push(snapshot.path, remote, identity=settings.backup_identity)
+            backup.push(
+                snapshot.path,
+                remote,
+                identity=settings.backup_identity,
+                source_db=settings.db_path,
+            )
             print(f"  copied to {remote}")
         except backup.BackupError as exc:
             # The local snapshot is good; say so, but fail loudly. A backup that

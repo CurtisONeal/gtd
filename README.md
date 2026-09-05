@@ -353,13 +353,23 @@ to confirm it is a GTD database, not just valid SQLite. A snapshot that fails is
 deleted rather than left looking like protection. `restore` re-checks before
 overwriting anything, and moves the replaced database aside as `*.replaced-*`.
 
-Configure the offsite copy in `.env` (see `.env.example`):
+Configure the offsite copy in `.env` (see `.env.example`). Two forms:
 
 ```bash
+# a mounted share on another machine — no SSH needed
+GTD_BACKUP_REMOTE=/Volumes/some_drive/gtd-backup
+
+# or over SSH
 GTD_BACKUP_REMOTE=user@100.x.y.z:/Users/user/gtd-backups/
 GTD_BACKUP_IDENTITY=~/.ssh/gtd_backup
 GTD_BACKUP_KEEP=14
 ```
+
+A directory destination is **refused if it sits on the same device as the
+database**. That is not pedantry: when a network share unmounts, macOS leaves an
+empty directory at the same path on the boot disk, and without the check every
+backup would keep reporting success while landing on the machine it is supposed
+to outlive.
 
 The target is another machine on the tailnet — hardware you own, encrypted
 transport, no third party. That is a deliberate reading of "nothing leaves the

@@ -179,13 +179,54 @@ def test_snapshot_of_a_missing_database_fails_clearly(tmp_path):
         backup.create_snapshot(tmp_path / "nope.db", tmp_path / "backups")
 
 
-def test_push_reports_failure_rather_than_pretending(tmp_path, populated):
+def test_push_over_ssh_reports_failure_rather_than_pretending(tmp_path, populated):
     """A backup that silently stopped going offsite is the dangerous case."""
     path, _ = populated
     snapshot = backup.create_snapshot(path, tmp_path / "backups")
 
     with pytest.raises(backup.BackupError, match="failed"):
-        backup.push(snapshot.path, "nonexistent-host-xyz:/tmp/nope", identity=None)
+        backup.push(snapshot.path, "nobody@nonexistent-host-xyz:/tmp/nope", identity=None)
+
+
+def test_a_directory_destination_is_copied_and_read_back(tmp_path, populated, monkeypatch):
+    """A mounted share is a filesystem path, not an scp target."""
+    path, _ = populated
+    snapshot = backup.create_snapshot(path, tmp_path / "backups")
+    share = tmp_path / "share"
+    share.mkdir()
+
+    # Pretend the share is on another volume; tmp_path is all one device.
+    monkeypatch.setattr(
+        backup, "_device_of", lambda p: 1 if str(p).startswith(str(share)) else 2
+    )
+    backup.push(snapshot.path, str(share), source_db=path)
+
+    landed = share / snapshot.path.name
+    assert landed.exists()
+    assert backup.inspect(landed).items == snapshot.items
+
+
+def test_a_destination_on_the_same_device_is_refused(tmp_path, populated):
+    """The dangerous case: a network share unmounts, macOS leaves an empty
+    directory at the same path on the boot disk, and backups keep "succeeding"
+    onto the very machine they are meant to survive."""
+    path, _ = populated
+    snapshot = backup.create_snapshot(path, tmp_path / "backups")
+    stale = tmp_path / "looks-like-a-share"
+    stale.mkdir()
+
+    with pytest.raises(backup.BackupError, match="same device"):
+        backup.push(snapshot.path, str(stale), source_db=path)
+
+    assert not (stale / snapshot.path.name).exists()
+
+
+def test_an_unmounted_destination_is_refused(tmp_path, populated):
+    path, _ = populated
+    snapshot = backup.create_snapshot(path, tmp_path / "backups")
+
+    with pytest.raises(backup.BackupError, match="not a directory"):
+        backup.push(snapshot.path, str(tmp_path / "never-mounted"), source_db=path)
 
 
 def test_importing_web_does_not_touch_a_database(tmp_path):

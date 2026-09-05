@@ -16,6 +16,7 @@ whole round trip into a scratch directory.
 
 from __future__ import annotations
 
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -136,13 +137,68 @@ def prune(backup_dir: Path, keep: int) -> list[Path]:
     return removed
 
 
-def push(snapshot: Path, remote: str, *, identity: Path | None = None) -> None:
-    """Copy a snapshot to `user@host:/path` over SSH.
+# `user@host:/path` — anything else is treated as a filesystem destination.
+_SSH_TARGET = re.compile(r"^[^/@\s]+@[^:/\s]+:")
 
-    Deliberately shells out to scp rather than taking an SSH dependency: the
-    transport is already there, and the credentials stay in the user's own SSH
-    config rather than in this app.
+
+def _device_of(path: Path) -> int:
+    """Which filesystem a path lives on. A seam, so the same-device guard can be
+    exercised in tests without needing two real volumes."""
+    return path.stat().st_dev
+
+
+def _copy_to_directory(snapshot: Path, destination: Path, source_db: Path) -> Path:
+    """Copy a snapshot to a mounted directory — a network share, say.
+
+    Refuses a destination on the same device as the database. A mounted share
+    that drops can leave an empty directory behind at the same path on the boot
+    disk, and copying into that would keep reporting success while quietly
+    putting the backup on the very machine it is meant to survive.
     """
+    if not destination.is_dir():
+        raise BackupError(
+            f"{destination} is not a directory — is the share mounted?"
+        )
+
+    try:
+        same_device = _device_of(destination) == _device_of(source_db.resolve())
+    except OSError as exc:
+        raise BackupError(f"cannot stat {destination}: {exc}") from exc
+    if same_device:
+        raise BackupError(
+            f"{destination} is on the same device as the database — "
+            "that is not an offsite copy. If this is a network share, it has "
+            "probably been unmounted, leaving an empty directory behind."
+        )
+
+    landed = destination / snapshot.name
+    shutil.copy2(snapshot, landed)
+    # Read it back where it landed. Over a network share a copy can report
+    # success and still be short; the only proof is opening the far copy.
+    inspect(landed)
+    return landed
+
+
+def push(
+    snapshot: Path,
+    remote: str,
+    *,
+    identity: Path | None = None,
+    source_db: Path | None = None,
+) -> None:
+    """Copy a verified snapshot offsite.
+
+    Two destinations, chosen by shape:
+
+    - `user@host:/path` goes over SSH via scp. Shelling out rather than taking
+      an SSH dependency keeps credentials in the user's own SSH config.
+    - anything else is a filesystem path — a mounted network share — copied
+      directly and then re-opened to prove it arrived intact.
+    """
+    if not _SSH_TARGET.match(remote):
+        _copy_to_directory(snapshot, Path(remote).expanduser(), source_db or snapshot)
+        return
+
     command = ["scp", "-q", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15"]
     if identity:
         command += ["-i", str(identity)]
