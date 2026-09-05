@@ -328,6 +328,92 @@ reverse proxy to manage), or nginx/Caddy in front. **Then**, and only then, set
 Nothing in the code assumes localhost, so moving between phases is a `.env` and
 a `--host` change.
 
+## Setting up backups
+
+Backups have two layers. The first is enough on its own; the second covers
+losing the building.
+
+### 1. A second machine (do this first)
+
+Snapshots go to another machine you own. Either a mounted share or SSH:
+
+```bash
+# a share already mounted on this machine — no SSH, no keys
+GTD_BACKUP_REMOTE=/Volumes/some_drive/gtd-backup
+
+# or over SSH to a host on the tailnet
+GTD_BACKUP_REMOTE=user@100.x.y.z:/path/on/that/machine/gtd-backups/
+GTD_BACKUP_IDENTITY=~/.ssh/gtd_backup
+```
+
+For the SSH form, the key has to be authorised on the *far* machine, which
+needs that machine's password — so run it yourself:
+
+```bash
+ssh-keygen -t ed25519 -f ~/.ssh/gtd_backup -N "" -C "gtd-backup"
+ssh-copy-id -i ~/.ssh/gtd_backup.pub user@100.x.y.z
+ssh -i ~/.ssh/gtd_backup -o BatchMode=yes user@100.x.y.z whoami   # must print the user
+```
+
+`ssh-copy-id` needs **Remote Login** enabled on the far Mac
+(System Settings → General → Sharing → Remote Login). File Sharing is a
+different service and does not enable SSH.
+
+Then load the timer, which runs daily at 03:15:
+
+```bash
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/local.gtd-backup.plist
+launchctl kickstart gui/$UID/local.gtd-backup     # bootstrap often loads without starting
+launchctl print gui/$UID/local.gtd-backup | grep -E "state =|runs ="
+```
+
+### 2. An encrypted copy off-site (optional)
+
+Only this layer needs encryption, because it is the only one a third party
+holds. Requires `brew install age rclone`.
+
+```bash
+# one keypair, once
+age-keygen -o ~/.config/gtd/age-identity.txt
+chmod 600 ~/.config/gtd/age-identity.txt
+grep "public key" ~/.config/gtd/age-identity.txt      # this is the recipient
+```
+
+Configure a cloud remote. This is interactive and opens a browser to authorise:
+
+```bash
+rclone config
+#  n) New remote
+#  name> gdrive
+#  Storage> drive          (pick your provider from the list)
+#  client_id / client_secret> leave blank for the defaults
+#  scope> 1                (full access) or 3 (drive.file — only files rclone creates)
+#  Edit advanced config> n
+#  Use web browser to automatically authenticate> y
+#  Configure this as a Shared Drive> n
+#  y) Yes this is OK  ->  q) Quit config
+rclone lsd gdrive:                                    # should list your Drive folders
+rclone mkdir gdrive:gtd-backups
+```
+
+Then in `.env`:
+
+```bash
+GTD_BACKUP_CLOUD=gdrive:gtd-backups
+GTD_BACKUP_AGE_RECIPIENT=age1...        # the PUBLIC key
+GTD_BACKUP_AGE_IDENTITY=~/.config/gtd/age-identity.txt
+```
+
+**Keep the identity file somewhere that is not this machine.** It is three
+lines — a created date, the public key, and a line beginning `AGE-SECRET-KEY-1`.
+That last line is the whole ballgame: without it every encrypted backup is
+unreadable noise. A password manager secure note is fine; so is paper. Do not
+put it in the bucket it decrypts, and do not commit it.
+
+Encrypting needs only the public key, so this machine can produce cloud backups
+it cannot itself read. If the cloud remote is set but the recipient is not,
+`gtd backup` exits non-zero rather than uploading plaintext.
+
 ## Backups
 
 The database is the point, and `exports/` is markdown — lossy, and not a restore

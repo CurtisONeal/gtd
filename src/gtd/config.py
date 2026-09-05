@@ -32,6 +32,21 @@ def _load_dotenv(path: Path) -> None:
             os.environ[key] = value
 
 
+def _as_int(value: str | None, default: int) -> int:
+    """Blank means "not set", not zero.
+
+    A key left empty in .env is the normal way to say "use the default", and
+    `int("")` raises. Because `load_settings()` runs at server startup, that
+    would take the whole app down, not just the setting it belongs to.
+    """
+    if value is None or not value.strip():
+        return default
+    try:
+        return int(value.strip())
+    except ValueError:
+        return default
+
+
 def _as_bool(value: str | None, default: bool = False) -> bool:
     if value is None:
         return default
@@ -97,15 +112,15 @@ def load_settings(env_file: Path | None = None) -> Settings:
         export_dir=_resolve(os.environ.get("GTD_EXPORT_DIR", "exports")),
         session_secret=secret,
         secure_cookies=_as_bool(os.environ.get("GTD_SECURE_COOKIES"), False),
-        session_max_age=int(os.environ.get("GTD_SESSION_MAX_AGE", 60 * 60 * 24 * 30)),
+        session_max_age=_as_int(os.environ.get("GTD_SESSION_MAX_AGE"), 60 * 60 * 24 * 30),
         capture_token=os.environ.get("GTD_CAPTURE_TOKEN", "").strip() or None,
         local_only=_as_bool(os.environ.get("GTD_LOCAL_ONLY"), False),
         host=os.environ.get("GTD_HOST", "127.0.0.1").strip() or "127.0.0.1",
-        port=int(os.environ.get("GTD_PORT", 8765)),
+        port=_as_int(os.environ.get("GTD_PORT"), 8765),
         backup_dir=_resolve(os.environ.get("GTD_BACKUP_DIR", "backups")),
         # user@host:/path — where snapshots are copied after being verified.
         backup_remote=os.environ.get("GTD_BACKUP_REMOTE", "").strip() or None,
-        backup_keep=int(os.environ.get("GTD_BACKUP_KEEP", 14)),
+        backup_keep=_as_int(os.environ.get("GTD_BACKUP_KEEP"), 14),
         backup_identity=(
             Path(os.environ["GTD_BACKUP_IDENTITY"]).expanduser()
             if os.environ.get("GTD_BACKUP_IDENTITY", "").strip()
