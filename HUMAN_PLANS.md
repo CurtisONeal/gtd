@@ -114,6 +114,29 @@ should end up in `ADR.md` when it lands.
   GTD instance through `POST /api/capture`, so phone capture does not require
   opening the web UI.
 
+  **Three Discord accounts, which is the thing that keeps costing time.**
+
+  | Account | Holds | Evidence |
+  |---|---|---|
+  | `tiltedperspective2` (suspected) | Hermes application `1513385920114724904` | Curtis could not find any apps while signed in elsewhere |
+  | `octobob704` | `direct_scripts_bot` application `1545661198068875305`, and owns it | The OAuth dialog reports "Signed in as octobob704" |
+  | `OctoBob` / `OctoBobs_dis#9516` | The server `InnocuousSoundingName` | Signed in on the Discord desktop app |
+
+  This is why the invite dialog offered an empty server list: it lists only
+  servers where the *signed-in browser account* has Manage Server, and
+  `octobob704` is not in that server. A private app can additionally only be
+  installed by its owner, so one account must both own the app and hold Manage
+  Server on the target.
+
+  **Not yet consolidated (2026-09-05).** Options, in the order they were
+  considered:
+  - Invite `octobob704` into the server and grant it Manage Server. Smallest
+    change, keeps the app private, unblocks the install immediately.
+  - Move both applications under a **Team** in the developer portal, with all
+    the identities as members. Applications cannot be transferred between
+    individual accounts, so a Team is the only real consolidation path — and it
+    is what stops a future session hunting for "missing" apps again.
+
   **Two Discord applications, and they are deliberately separate.**
 
   | App | Application ID | Notes |
@@ -121,8 +144,13 @@ should end up in `ADR.md` when it lands.
   | Hermes gateway | `1513385920114724904` | Pre-existing. Likely owned by the `tiltedperspective2` account — recovered by decoding the first segment of `DISCORD_BOT_TOKEN` in `hermes-home/.env`, which is the base64 application id and is public information |
   | `direct_scripts_bot` | `1545661198068875305` | The one that will carry `/capture`. Public key `1515cf07…` (interaction verification; not a secret, and not needed for a gateway bot) |
 
-  Sharing one token between them would make two processes fight over the same
-  bot identity, which is why `direct_scripts_bot/README.md` calls for its own.
+The public key you pasted (1515cf07…) isn't secret and isn't needed here — it verifies HTTP interaction webhooks, and this bot connects over a gateway websocket instead.
+
+  Sharing one token between them would make two processes fight over the same  bot identity, which is why `direct_scripts_bot/README.md` calls for its own.
+
+  What's left for the bot: reset the token on the Bot page (copy it immediately — Discord shows it once), put it in /Users/s_admin/Documents/agent_set_up/direct_scripts_bot/.env as DISCORD_BOT_TOKEN=, and add GTD_CAPTURE_TOKEN plus the capture URL. That directory has no .env at all right now, though bot.log shows it ran on Aug 8–9 — so a token existed then and has since gone.
+
+Once the token's in place, say the word and I'll add the /capture command to bot.py — its README already documents the intended shape, and the GTD side is live and tested, so it's the last piece.
 
   Current known state:
   - GTD has `POST /api/capture`, and it is **live**: `GTD_CAPTURE_TOKEN` is set
@@ -300,3 +328,19 @@ configured; it is not.
   confirmed by Curtis. The `bentonroberts.com` / Elevate Services listing rather
   than pannix.com is fine. Invited for visibility; unlikely to actively
   contribute.
+
+  
+Application ID
+1545661198068875305
+
+Copy
+Public Key
+1515cf079f29a644f278f189296446a2614c3ea3fedb0a97e792e095f7e65cbf
+
+Oauth2 Generated Url:
+https://discord.com/oauth2/authorize?client_id=1545661198068875305&integration_type=1&scope=applications.commands
+
+The below is not the bot token:
+Client Secret Key: Kzcoipgc1pZV9sTPwP4x5AFhYZs7baGD
+
+Bot token is on the Bot page: 
