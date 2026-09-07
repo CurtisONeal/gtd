@@ -691,18 +691,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ar_id = _int_or_none(area_id)
 
         only_repeating = True if repeating == "1" else None
+
+        # The repeating view is for maintenance — finding a recurring item to
+        # change it — so it shows deferred ones too. Hiding tomorrow's
+        # occurrence is right on Next Actions and wrong here: it is precisely
+        # the thing you came to edit.
+        show_deferred = bool(deferred) or bool(only_repeating)
+
         items = store.list_items(
             state,
-            include_deferred=bool(deferred),
+            include_deferred=show_deferred,
             context_id=ctx_id,
             area_id=ar_id,
             repeating=only_repeating,
         )
         # How many are being withheld by the tickler, so it's visible not silent.
+        # The comparison must carry the *same* filters, or it reports the whole
+        # list as hidden the moment any filter is applied.
         hidden = 0
-        if state == ItemState.NEXT_ACTION and not deferred:
+        if state == ItemState.NEXT_ACTION and not show_deferred:
             hidden = len(
-                store.list_items(state, include_deferred=True, context_id=ctx_id, area_id=ar_id)
+                store.list_items(
+                    state,
+                    include_deferred=True,
+                    context_id=ctx_id,
+                    area_id=ar_id,
+                    repeating=only_repeating,
+                )
             ) - len(items)
 
         return render(
@@ -717,6 +732,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             selected_context=ctx_id,
             selected_area=ar_id,
             only_repeating=bool(only_repeating),
+            showing_deferred=show_deferred,
             blocker_candidates=store.list_dependency_candidates(),
             back=str(request.url.path),
         )

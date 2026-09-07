@@ -836,13 +836,18 @@ class Store:
             return conn.execute(" ".join(sql), params).fetchall()
 
     def count_repeating(self) -> int:
-        """How many live items carry a repeat rule — for the lists index."""
+        """Repeating next actions — deferred ones included.
+
+        Counts exactly what `/list/next_action?repeating=1` displays. A count
+        that promises more than the page it links to is worse than no count:
+        it sends you looking for something that was never going to be there.
+        """
         with self.db.connect() as conn:
             return conn.execute(
                 """SELECT COUNT(*) AS n FROM items
-                    WHERE state NOT IN (?, ?)
+                    WHERE state = ?
                       AND (repeat_unit IS NOT NULL OR repeat_days IS NOT NULL)""",
-                (str(ItemState.DONE), str(ItemState.TRASHED)),
+                (str(ItemState.NEXT_ACTION),),
             ).fetchone()["n"]
 
     def next_inbox_item(self) -> sqlite3.Row | None:

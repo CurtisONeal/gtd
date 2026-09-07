@@ -111,3 +111,72 @@ def test_the_clarify_page_offers_the_repeat_handoff(signed_in, app):
     body = signed_in.get("/inbox?step=defer_form").text
 
     assert 'name="then_repeat"' in body
+
+
+# ── The count and the page it links to must agree ────────────────────────────
+
+
+def _repeating_next_action(store, title, *, defer_until=None):
+    item_id = store.capture(title)
+    store.set_state(store.capture("noise " + title), ItemState.NEXT_ACTION)
+    store.set_state(item_id, ItemState.NEXT_ACTION, defer_until=defer_until)
+    store.set_recurrence(item_id, every=1, unit="day")
+    return item_id
+
+
+def test_the_repeating_view_includes_deferred_occurrences(store, app=None):
+    """Completing a daily item defers tomorrow's copy. The maintenance view must
+    still show it — it is exactly the one you came to edit."""
+    from datetime import date, timedelta
+
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    _repeating_next_action(store, "visible")
+    _repeating_next_action(store, "deferred", defer_until=tomorrow)
+
+    shown = store.list_items(
+        ItemState.NEXT_ACTION, include_deferred=True, repeating=True
+    )
+
+    assert {r["title"] for r in shown} == {"visible", "deferred"}
+
+
+def test_the_repeating_count_matches_what_the_page_shows(signed_in, app):
+    """A count that promises more than its page delivers sends you hunting for
+    something that was never going to be there."""
+    from datetime import date, timedelta
+
+    store = app.state.store
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    _repeating_next_action(store, "visible")
+    _repeating_next_action(store, "deferred", defer_until=tomorrow)
+    # A repeating item parked in Someday is live, but the page this count links
+    # to only lists next actions. Counting it would over-promise.
+    parked = store.capture("parked idea")
+    store.set_state(parked, ItemState.SOMEDAY)
+    store.set_recurrence(parked, every=1, unit="day")
+
+    count = store.count_repeating()
+    body = signed_in.get("/list/next_action?repeating=1").text
+    shown = body.count('class="item-title"')
+
+    assert count == 2
+    assert shown == count, f"index says {count}, page shows {shown}"
+
+
+def test_the_hidden_count_respects_the_active_filter(signed_in, app):
+    """The tickler disclosure compared filtered items against the unfiltered
+    list, so any filter made it claim the whole list was hidden."""
+    from datetime import date, timedelta
+
+    store = app.state.store
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    for n in range(5):
+        store.set_state(store.capture(f"plain {n}"), ItemState.NEXT_ACTION)
+    store.set_state(
+        store.capture("deferred plain"), ItemState.NEXT_ACTION, defer_until=tomorrow
+    )
+
+    body = signed_in.get("/list/next_action").text
+
+    # One genuinely deferred item — not "5 hidden" because five others exist.
+    assert "1 hidden until their defer date" in body

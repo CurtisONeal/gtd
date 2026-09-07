@@ -13,7 +13,9 @@
 
 {% if only_repeating %}
 <p class="sub">
-  Showing only items that repeat. <a href="/list/{{ state }}">Show all</a>
+  Showing only items that repeat, <strong>including ones the tickler is holding
+  for a future date</strong> — those are usually the ones you came to change.
+  <a href="/list/{{ state }}">Show all</a>
 </p>
 {% elif state in ("next_action", "waiting_for", "someday") %}
 <p class="sub">
@@ -39,7 +41,9 @@
     <label for="add_title">
       {% if only_repeating %}
 <p class="sub">
-  Showing only items that repeat. <a href="/list/{{ state }}">Show all</a>
+  Showing only items that repeat, <strong>including ones the tickler is holding
+  for a future date</strong> — those are usually the ones you came to change.
+  <a href="/list/{{ state }}">Show all</a>
 </p>
 {% elif state in ("next_action", "waiting_for", "someday") %}
 <p class="sub">
@@ -57,7 +61,9 @@
     <div class="field-row">
       {% if only_repeating %}
 <p class="sub">
-  Showing only items that repeat. <a href="/list/{{ state }}">Show all</a>
+  Showing only items that repeat, <strong>including ones the tickler is holding
+  for a future date</strong> — those are usually the ones you came to change.
+  <a href="/list/{{ state }}">Show all</a>
 </p>
 {% elif state in ("next_action", "waiting_for", "someday") %}
 <p class="sub">
