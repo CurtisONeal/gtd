@@ -110,9 +110,49 @@ should end up in `ADR.md` when it lands.
   - Deferred/tickler items becoming current.
   - A final checklist confirming the system is current enough to trust.
 
-- **Discord capture.** Goal: `/capture <text>` in Discord sends the text to this
-  GTD instance through `POST /api/capture`, so phone capture does not require
-  opening the web UI.
+- **Discord capture — PARKED 2026-09-07.** Goal: `/capture <text>` in Discord
+  sends the text to this GTD instance through `POST /api/capture`, so phone
+  capture does not require opening the web UI.
+
+  ### Handoff — read this first
+
+  **The GTD side is finished. Everything remaining is Discord-side.** Do not
+  re-verify the GTD half; it was smoke-tested 2026-09-04 and nothing since has
+  touched it.
+
+  | Check | Expected | How to confirm |
+  |---|---|---|
+  | Capture API live | 401 without a token | `curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8765/api/capture` |
+  | Token set | non-empty | `grep -c '^GTD_CAPTURE_TOKEN=.\+' .env` → 1 |
+  | Bot has a token | 72 chars | `direct_scripts_bot/.env`, key `DISCORD_BOT_TOKEN` |
+  | Bot code | no `/capture` yet | `grep -c capture ../agent_set_up/direct_scripts_bot/bot.py` → 0 |
+
+  **The one blocker:** `octobob704` owns the application but has no Manage
+  Server on `InnocuousSoundingName`, which `OctoBob` owns. The invite dialog
+  therefore offers an empty server list. See the account table below.
+
+  **Human steps, in order:**
+  1. Resolve the account overlap — invite `octobob704` to the server and grant
+     Manage Server, or move both apps under a portal **Team**.
+  2. Reopen `https://discord.com/oauth2/authorize?client_id=1545661198068875305&permissions=2048&scope=bot+applications.commands`
+     and pick the server. The bot appears offline in the member list; that is
+     correct until `bot.py` runs.
+  3. Set `GUILD_ID` in `direct_scripts_bot/.env` — it is empty, and without it
+     slash commands take up to an hour to appear instead of being instant.
+  4. **Reset the bot token** (Bot → Reset Token) and paste the new value in.
+     The current one was visible in a screenshot on 2026-09-05.
+
+  **Agent steps, only after the above:** add a `/capture` slash command to
+  `bot.py` calling `POST http://127.0.0.1:8765/api/capture` with
+  `Authorization: Bearer <GTD_CAPTURE_TOKEN>` and
+  `{"title": ..., "source": "discord"}`. Reply ephemerally. Do not add the
+  Message Content intent — a slash command receives its text in the interaction
+  payload and needs neither that nor Read Message History.
+
+  **Settings that must hold together on the app:** Installation Contexts →
+  Guild Install ticked; Install Link → None; Public Bot → off. Guild Install was
+  the fix for "Installation type not supported"; Install Link must be None
+  *because* the app is private, and those two do not conflict.
 
   **Three Discord accounts, which is the thing that keeps costing time.**
 
