@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -61,7 +61,11 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE TABLE IF NOT EXISTS checklists (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     name         TEXT NOT NULL,
+    -- 'checklist' is ticked and reset; 'collection' is a plain named ordered
+    -- list — things to watch, decks to build — with no ticking at all.
+    kind         TEXT NOT NULL DEFAULT 'checklist',
     -- Evergreen lists are run repeatedly and reset; one-offs complete once.
+    -- Only meaningful for kind = 'checklist'.
     evergreen    INTEGER NOT NULL DEFAULT 1,
     status       TEXT NOT NULL DEFAULT 'active',
     notes        TEXT NOT NULL DEFAULT '',
@@ -166,6 +170,9 @@ MIGRATIONS: dict[int, tuple[str, ...]] = {
         "ALTER TABLE items ADD COLUMN repeat_days TEXT",
         "ALTER TABLE items ADD COLUMN repeat_from TEXT",
         "ALTER TABLE items ADD COLUMN recurs_from_id INTEGER REFERENCES items(id)",
+    ),
+    7: (
+        "ALTER TABLE checklists ADD COLUMN kind TEXT NOT NULL DEFAULT 'checklist'",
     ),
 }
 

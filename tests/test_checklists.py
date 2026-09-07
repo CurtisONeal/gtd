@@ -192,3 +192,91 @@ def test_a_missing_checklist_redirects_rather_than_500s(signed_in):
 
     assert response.status_code == 303
     assert response.headers["location"] == "/checklists"
+
+
+# ── Creating any kind of list from one place ─────────────────────────────────
+
+
+def test_creating_a_collection(signed_in, app):
+    """A collection is a named ordered list you keep, not run."""
+    from gtd.models import ListKind
+
+    response = signed_in.post(
+        "/lists/new", data={"name": "Movies to watch", "kind": "collection"},
+        follow_redirects=False,
+    )
+
+    created = app.state.store.list_checklists()[0]
+    assert created["name"] == "Movies to watch"
+    assert created["kind"] == ListKind.COLLECTION
+    assert response.headers["location"] == f"/checklists/{created['id']}"
+
+
+def test_creating_each_checklist_shape(signed_in, app):
+    signed_in.post("/lists/new", data={"name": "Dojo", "kind": "checklist_evergreen"})
+    signed_in.post("/lists/new", data={"name": "Shelves", "kind": "checklist_oneoff"})
+
+    by_name = {c["name"]: c for c in app.state.store.list_checklists()}
+    assert by_name["Dojo"]["evergreen"] == 1
+    assert by_name["Shelves"]["evergreen"] == 0
+
+
+def test_creating_a_project_goes_to_projects_not_checklists(signed_in, app):
+    store = app.state.store
+    signed_in.post(
+        "/lists/new",
+        data={"name": "Repaint the shed", "kind": "project", "outcome": "shed is blue"},
+    )
+
+    assert store.list_checklists() == []
+    assert [p["name"] for p in store.list_projects()] == ["Repaint the shed"]
+
+
+def test_a_nameless_list_is_refused(signed_in, app):
+    signed_in.post("/lists/new", data={"name": "   ", "kind": "collection"})
+
+    assert app.state.store.list_checklists() == []
+
+
+def test_a_collection_offers_no_ticking_or_resetting(signed_in, app):
+    """Ticking a collection would mean nothing, and it is never run."""
+    from gtd.models import ListKind
+
+    store = app.state.store
+    collection = store.create_checklist("Movies", kind=ListKind.COLLECTION)
+    store.add_checklist_item(collection, "Arrival")
+
+    body = signed_in.get(f"/checklists/{collection}").text
+
+    assert "Reset ticks" not in body
+    assert "Move to Done" not in body
+    assert "/tick" not in body
+    assert "Arrival" in body
+    assert "nothing to reset or finish" in body
+
+
+def test_a_collection_cannot_be_reset_even_through_the_store(store):
+    from gtd.models import ListKind
+
+    collection = store.create_checklist("Movies", kind=ListKind.COLLECTION)
+
+    assert store.reset_checklist(collection) is False
+
+
+def test_collection_items_still_reorder(store):
+    from gtd.models import ListKind
+
+    collection = store.create_checklist("Movies", kind=ListKind.COLLECTION)
+    for title in ["Arrival", "Dune", "Solaris"]:
+        store.add_checklist_item(collection, title)
+    last = store.list_checklist_items(collection)[2]["id"]
+
+    store.move_in_order(last, -1, group="checklist_id")
+
+    assert [i["title"] for i in store.list_checklist_items(collection)] == [
+        "Arrival", "Solaris", "Dune"
+    ]
+
+
+def test_the_lists_page_offers_creation(signed_in):
+    assert 'href="/lists/new"' in signed_in.get("/lists").text

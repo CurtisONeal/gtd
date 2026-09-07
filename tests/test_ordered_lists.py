@@ -102,15 +102,23 @@ def test_invalid_delta_is_rejected(store):
         store.move_in_order(item_id, 2)
 
 
-def _columns_added_after(version: int) -> set[str]:
-    """Column names that migrations later than `version` introduce."""
-    return {
-        statement.split("ADD COLUMN")[1].split()[0]
-        for later, statements in MIGRATIONS.items()
-        if later > version
-        for statement in statements
-        if "ADD COLUMN" in statement
-    }
+def _columns_added_after(version: int) -> set[tuple[str, str]]:
+    """(table, column) pairs that migrations later than `version` introduce.
+
+    Table-aware because migrations do not all touch `items` — v7 alters
+    `checklists`, and a column-name-only check looked for it in the wrong table.
+    """
+    added = set()
+    for later, statements in MIGRATIONS.items():
+        if later <= version:
+            continue
+        for statement in statements:
+            if "ADD COLUMN" not in statement:
+                continue
+            table = statement.split("ALTER TABLE")[1].split()[0]
+            column = statement.split("ADD COLUMN")[1].split()[0]
+            added.add((table, column))
+    return added
 
 
 def _schema_at(version: int) -> str:
@@ -119,11 +127,11 @@ def _schema_at(version: int) -> str:
     Derived from MIGRATIONS rather than hardcoded, so adding a migration keeps
     these tests honest instead of quietly making them test nothing.
     """
-    added = _columns_added_after(version)
+    names = {column for _, column in _columns_added_after(version)}
     kept = []
     for line in SCHEMA.splitlines():
         # The column definition itself.
-        if line.strip().split(" ")[0] in added:
+        if line.strip().split(" ")[0] in names:
             continue
         kept.append(line)
     return "\n".join(kept)
@@ -153,15 +161,22 @@ def test_migrating_from_each_previous_version_reaches_existing_data(tmp_path, fr
 
     # Check the built table, not the schema text: column names also appear in
     # comments, and it is the actual absence that makes the fixture meaningful.
-    before = {row[1] for row in conn.execute("PRAGMA table_info(items)")}
-    assert not (expected & before), f"fixture already has {expected & before}"
+    def columns_of(connection, table):
+        return {row[1] for row in connection.execute(f"PRAGMA table_info({table})")}
+
+    present = {(t, c) for t, _ in expected for c in columns_of(conn, t)}
+    assert not (expected & present), f"fixture already has {expected & present}"
     conn.close()
 
     Database(path).init_schema(seed_defaults=False)
 
     conn = sqlite3.connect(path)
-    columns = {row[1] for row in conn.execute("PRAGMA table_info(items)")}
-    assert expected <= columns
+    landed = {
+        (table, row[1])
+        for table, _ in expected
+        for row in conn.execute(f"PRAGMA table_info({table})")
+    }
+    assert expected <= landed, f"missing after migrate: {expected - landed}"
     assert conn.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 1
 
     # Idempotent: startup runs this on every boot.

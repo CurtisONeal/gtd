@@ -12,7 +12,7 @@ from typing import Any, Sequence
 
 from .db import Database
 from . import recurrence
-from .models import ChecklistStatus, ItemState, ProjectStatus, Source
+from .models import ChecklistStatus, ItemState, ListKind, ProjectStatus, Source
 
 
 def _now() -> str:
@@ -609,16 +609,29 @@ class Store:
     # ticking moved an item to Done, reset would have to resurrect rows out of
     # `done`, and packing a bag would litter the Done list.
 
-    def create_checklist(self, name: str, *, evergreen: bool = True) -> int:
+    def create_checklist(
+        self,
+        name: str,
+        *,
+        evergreen: bool = True,
+        kind: str = ListKind.CHECKLIST,
+    ) -> int:
         name = name.strip()
         if not name:
             raise ValueError("name cannot be empty")
+        if kind not in {str(k) for k in ListKind}:
+            raise ValueError(f"unknown list kind: {kind}")
+        # A collection is never run, so evergreen would be meaningless on one.
+        if kind == ListKind.COLLECTION:
+            evergreen = True
         now = _now()
         with self.db.connect() as conn:
             cur = conn.execute(
-                """INSERT INTO checklists (name, evergreen, status, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (name, 1 if evergreen else 0, str(ChecklistStatus.ACTIVE), now, now),
+                """INSERT INTO checklists
+                       (name, kind, evergreen, status, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (name, str(kind), 1 if evergreen else 0,
+                 str(ChecklistStatus.ACTIVE), now, now),
             )
             return cur.lastrowid
 
@@ -646,12 +659,12 @@ class Store:
         if status is not None:
             sql.append("WHERE c.status = ?")
             params.append(str(status))
-        sql.append("ORDER BY c.evergreen DESC, c.name ASC")
+        sql.append("ORDER BY c.kind ASC, c.name ASC")
         with self.db.connect() as conn:
             return conn.execute(" ".join(sql), params).fetchall()
 
     def update_checklist(self, checklist_id: int, **fields: Any) -> None:
-        allowed = {"name", "evergreen", "notes"}
+        allowed = {"name", "evergreen", "notes", "kind"}
         unknown = set(fields) - allowed
         if unknown:
             raise ValueError(f"unknown field(s): {', '.join(sorted(unknown))}")
@@ -703,6 +716,8 @@ class Store:
         checklist = self.get_checklist(checklist_id)
         if checklist is None or not checklist["evergreen"]:
             return False
+        if checklist["kind"] != ListKind.CHECKLIST:
+            return False  # a collection is kept, not run
         with self.db.connect() as conn:
             conn.execute(
                 """UPDATE items SET ticked = 0, updated_at = ?

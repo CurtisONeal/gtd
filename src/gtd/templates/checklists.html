@@ -8,6 +8,8 @@
   used again; one-offs finish once and leave.
 </p>
 
+<p class="sub"><a href="/lists/new">New list</a> — checklist, collection or project.</p>
+
 <details class="card">
   <summary><strong>New checklist</strong></summary>
   <form method="post" action="/checklists">
@@ -36,11 +38,16 @@
     <div class="item-body">
       <div class="item-title"><a href="/checklists/{{ c.id }}">{{ c.name }}</a></div>
       <div class="meta">
-        <span>{{ "evergreen" if c.evergreen else "one-off" }}</span>
-        {% if c.item_count %}
-          <span>{{ c.ticked_count }}/{{ c.item_count }} ticked</span>
+        {% if c.kind == "collection" %}
+          <span>collection</span>
+          <span>{{ c.item_count }} item{{ '' if c.item_count == 1 else 's' }}</span>
         {% else %}
-          <span>empty</span>
+          <span>{{ "evergreen" if c.evergreen else "one-off" }}</span>
+          {% if c.item_count %}
+            <span>{{ c.ticked_count }}/{{ c.item_count }} ticked</span>
+          {% else %}
+            <span>empty</span>
+          {% endif %}
         {% endif %}
       </div>
     </div>

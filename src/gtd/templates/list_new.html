@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}New list — GTD{% endblock %}
+{% block content %}
+
+<h1>New list</h1>
+<p class="sub">Name it, say what kind it is, and it appears under Lists.</p>
+
+<form method="post" action="/lists/new" class="card">
+  <label for="name">Name</label>
+  <input type="text" id="name" name="name" required autofocus
+         placeholder="Dojo bag · Movies to watch · Build the shelves">
+
+  <label for="kind">What kind of list is it?</label>
+  <select id="kind" name="kind">
+    <option value="collection">Collection — a named list you keep</option>
+    <option value="checklist_evergreen" selected>Checklist — run it, tick it, reset it</option>
+    <option value="checklist_oneoff">Checklist, one-off — finish it once and it leaves</option>
+    <option value="project">Project — an outcome needing more than one action</option>
+  </select>
+
+  <div class="field-row">
+    <div>
+      <div class="hint">
+        <strong>Collection</strong> — ordered, no ticking. Things to watch, decks to
+        build, kit to buy.<br>
+        <strong>Checklist</strong> — ticked as you go. Evergreen resets so you can run
+        it again; a one-off finishes once.<br>
+        <strong>Project</strong> — lives with your actions, not here: it holds next
+        actions and has an outcome.
+      </div>
+    </div>
+  </div>
+
+  {# Only a project uses this, and it is harmless on the others. #}
+  <label for="outcome">Outcome <span class="hint">— projects only, optional</span></label>
+  <input type="text" id="outcome" name="outcome"
+         placeholder="What does done look like?">
+
+  <div class="actions">
+    <button type="submit" class="primary">Create</button>
+    <a class="btn" href="/lists">Cancel</a>
+  </div>
+</form>
+
+{% endblock %}

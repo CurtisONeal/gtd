@@ -5,8 +5,13 @@
 <p class="sub"><a href="/checklists">← Checklists</a></p>
 <h1>{{ checklist.name }}</h1>
 <p class="sub">
-  {{ "Evergreen — reset it and run it again." if checklist.evergreen
-     else "One-off — finish it once and it leaves the list." }}
+  {% if checklist.kind == "collection" %}
+    A collection — an ordered list you keep. Nothing to tick.
+  {% elif checklist.evergreen %}
+    Evergreen — reset it and run it again.
+  {% else %}
+    One-off — finish it once and it leaves the list.
+  {% endif %}
   {% if checklist.status == "done" %}<strong>Finished.</strong>{% endif %}
 </p>
 
@@ -24,12 +29,14 @@
 <div class="card">
   {% for item in items %}
   <div class="item">
+    {% if checklist.kind != "collection" %}
     {# Ticking is a checklist-local flag, never the done state — a POST per row
        keeps it working without any JavaScript. #}
     <form method="post" action="/checklists/{{ checklist.id }}/items/{{ item.id }}/tick" class="inline-form">
       <input type="hidden" name="ticked" value="{{ '' if item.ticked else '1' }}">
       <button type="submit" title="{{ 'Untick' if item.ticked else 'Tick' }}">{{ "☑" if item.ticked else "☐" }}</button>
     </form>
+    {% endif %}
 
     <div class="item-body">
       <div class="item-title">{{ item.title }}</div>
@@ -54,7 +61,12 @@
 {% endif %}
 
 <div class="card">
-  {% if checklist.evergreen %}
+  {% if checklist.kind == "collection" %}
+    <p class="sub" style="margin-top:0">
+      A collection is kept, not run — so there is nothing to reset or finish.
+      Reorder it, add to it, remove from it.
+    </p>
+  {% elif checklist.evergreen %}
     <p class="sub" style="margin-top:0">
       Resetting clears every tick. The items, their order and the list itself stay put.
     </p>

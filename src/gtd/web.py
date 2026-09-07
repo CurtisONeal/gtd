@@ -30,6 +30,8 @@ from .db import Database
 from .export import export_all
 from . import recurrence
 from .models import (
+    LIST_KIND_LABELS,
+    ListKind,
     BOOK_CATEGORY_LABELS,
     PERCENT_BUCKETS,
     STATE_LABELS,
@@ -453,6 +455,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store.update_item(item_id, percent_complete=100)
         store.complete(item_id)
         return RedirectResponse("/books", status_code=303)
+
+    @app.get("/lists/new", response_class=HTMLResponse)
+    def list_new_form(request: Request):
+        return render(request, "list_new.html")
+
+    @app.post("/lists/new")
+    def list_new(
+        name: str = Form(...),
+        kind: str = Form("checklist_evergreen"),
+        outcome: str = Form(""),
+    ):
+        """One place to make a named list, whatever kind it is.
+
+        The four choices collapse onto two underlying things — a container in
+        `checklists` with a kind, or a project — but the user should not have to
+        know that to make one.
+        """
+        name = name.strip()
+        if not name:
+            return RedirectResponse("/lists/new", status_code=303)
+
+        if kind == "project":
+            project_id = store.create_project(name, outcome=outcome.strip())
+            return RedirectResponse(f"/projects#p{project_id}", status_code=303)
+
+        shapes = {
+            "collection": (ListKind.COLLECTION, True),
+            "checklist_evergreen": (ListKind.CHECKLIST, True),
+            "checklist_oneoff": (ListKind.CHECKLIST, False),
+        }
+        list_kind, evergreen = shapes.get(kind, (ListKind.CHECKLIST, True))
+        checklist_id = store.create_checklist(
+            name, evergreen=evergreen, kind=list_kind
+        )
+        return RedirectResponse(f"/checklists/{checklist_id}", status_code=303)
 
     @app.get("/search", response_class=HTMLResponse)
     def search(request: Request, q: str = "", all: str = ""):

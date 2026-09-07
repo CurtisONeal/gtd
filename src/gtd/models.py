@@ -71,6 +71,24 @@ class Energy(StrEnum):
     LOW = "low"
 
 
+class ListKind(StrEnum):
+    """What a named list *is*.
+
+    Both are an ordered set of items in a container. A checklist is run — ticked
+    through and reset. A collection is just kept — things to watch, decks to
+    build — and ticking it would mean nothing.
+    """
+
+    CHECKLIST = "checklist"
+    COLLECTION = "collection"
+
+
+LIST_KIND_LABELS: dict[str, str] = {
+    ListKind.CHECKLIST: "Checklist",
+    ListKind.COLLECTION: "Collection",
+}
+
+
 class ChecklistStatus(StrEnum):
     ACTIVE = "active"
     DONE = "done"

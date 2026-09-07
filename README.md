@@ -179,6 +179,25 @@ Three things are deliberate:
 Finishing a book completes it like anything else, so it leaves the page rather
 than sitting at 100%. See ADR-012.
 
+## Making a list
+
+`/lists/new` is one place to create any named list. You choose a **kind** and
+get the right shape:
+
+| Kind | What it is |
+|---|---|
+| **Collection** | An ordered list you *keep* — films to watch, decks to build, kit to buy. No ticking, because ticking would mean nothing. |
+| **Checklist, evergreen** | Run it, tick it, reset it. The dojo bag. |
+| **Checklist, one-off** | Finish it once and it leaves. "Build the shelves." |
+| **Project** | An outcome needing more than one action. Lives with your actions, not here. |
+
+Underneath, the first three are one container with a `kind`, and a project is a
+project. Collections and checklists share everything — ordering, membership,
+deletion cascade — and differ only in whether ticking and resetting are offered.
+Books and Technology Projects remain fixed single lists rather than things you
+create; if that ever chafes, they are the same shape and could become
+collections.
+
 ## Checklists
 
 `/checklists` holds sets you *run* rather than tasks you do — what to take to
