@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Today — GTD{% endblock %}
+{% block content %}
+
+<h1>Today</h1>
+<p class="sub">
+  {% if total %}
+    {{ done|length }} of {{ total }} done.
+  {% else %}
+    Nothing repeats daily yet.
+  {% endif %}
+  <span class="hint">— standing commitments, not tasks. Swept through, not planned.</span>
+</p>
+
+{% if not total %}
+<div class="card">
+  <p class="sub" style="margin-top:0">
+    Daily items are ordinary next actions with a repeat rule of <em>every day</em>
+    or a set of weekdays. Set one on any item's edit page and it appears here.
+  </p>
+</div>
+{% endif %}
+
+{% if outstanding %}
+<h2>Still to do <span class="badge">{{ outstanding|length }}</span></h2>
+<div class="card">
+  {% for item in outstanding %}
+  <div class="item">
+    <form method="post" action="/items/{{ item.id }}/complete" class="inline-form">
+      <input type="hidden" name="back" value="/daily">
+      <button type="submit" title="Done for today">✓</button>
+    </form>
+    <div class="item-body">
+      <div class="item-title">{{ item.title }}</div>
+      <div class="meta">
+        {% if item.context_name %}<span>{{ item.context_name }}</span>{% endif %}
+        <span class="repeats">{{ repeat_label(item) }}</span>
+        {% if item.time_estimate_min %}<span>{{ item.time_estimate_min }}m</span>{% endif %}
+      </div>
+    </div>
+    <a class="btn linkish" href="/items/{{ item.id }}/edit?back=/daily" title="Edit">✎</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if done %}
+<h2>Done today <span class="badge quiet">{{ done|length }}</span></h2>
+<div class="card">
+  {% for item in done %}
+  <div class="item">
+    {# Undo also removes the occurrence that completing spawned, so a mis-tick
+       cannot quietly leave two copies of a daily habit. #}
+    <form method="post" action="/items/{{ item.id }}/restore" class="inline-form">
+      <input type="hidden" name="back" value="/daily">
+      <button type="submit" title="Not actually done — undo">↩</button>
+    </form>
+    <div class="item-body">
+      <div class="item-title quiet-link">{{ item.title }}</div>
+      <div class="meta"><span>{{ item.completed_at[11:16] }}</span></div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if total and not outstanding %}
+<p class="empty">Everything for today is done.</p>
+{% endif %}
+
+{% endblock %}

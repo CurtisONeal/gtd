@@ -15,6 +15,7 @@
     Inbox{% if counts and counts.inbox %} <span class="badge">{{ counts.inbox }}</span>{% endif %}
   </a>
   <a href="/list/next_action">Next{% if counts %} <span class="badge quiet">{{ counts.next_action }}</span>{% endif %}</a>
+  <a href="/daily">Today</a>
   <a href="/lists">Lists</a>
   <form method="post" action="/logout" class="inline-form">
     <button type="submit" class="linkish">Sign out</button>

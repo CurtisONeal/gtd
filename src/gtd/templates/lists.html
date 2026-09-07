@@ -5,6 +5,12 @@
 <h1>Lists</h1>
 <p class="sub">Everything the system holds, in one place.</p>
 
+<form method="get" action="/search" class="card">
+  <label for="q">Search</label>
+  <input type="search" id="q" name="q" placeholder="find anything by title or notes…">
+  <div class="actions"><button type="submit" class="primary">Search</button></div>
+</form>
+
 <h2>Actionable</h2>
 <div class="card">
   {% for row in actionable %}

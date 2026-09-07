@@ -454,6 +454,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store.complete(item_id)
         return RedirectResponse("/books", status_code=303)
 
+    @app.get("/search", response_class=HTMLResponse)
+    def search(request: Request, q: str = "", all: str = ""):
+        """Find an item anywhere — the way to reach a recurring one to change it.
+
+        A GET with the query in the URL, so a search can be bookmarked and the
+        back button behaves.
+        """
+        include_finished = all == "1"
+        return render(
+            request,
+            "search.html",
+            query=q.strip(),
+            results=store.search(q, include_finished=include_finished),
+            include_finished=include_finished,
+            state_labels=STATE_LABELS,
+        )
+
+    @app.get("/daily", response_class=HTMLResponse)
+    def daily(request: Request):
+        """Standing daily commitments — meds, teeth, sunlight.
+
+        A different kind of thing from a task: swept several times a day rather
+        than planned, and the question is "have I done it yet", so what is
+        already done is shown alongside what is not.
+        """
+        buckets = store.daily_items()
+        outstanding, done = buckets["outstanding"], buckets["done_today"]
+        return render(
+            request,
+            "daily.html",
+            outstanding=outstanding,
+            done=done,
+            total=len(outstanding) + len(done),
+        )
+
     @app.get("/lists", response_class=HTMLResponse)
     def lists_index(request: Request):
         """One page indexing every list.

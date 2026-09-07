@@ -279,8 +279,20 @@ class Store:
         )
 
     def uncomplete(self, item_id: int, *, state: str = ItemState.NEXT_ACTION) -> None:
-        """Reversing completion is a single UPDATE — no archive row to hunt down."""
+        """Reverse a completion, taking any spawned occurrence with it.
+
+        Completing a repeating item creates its successor. Undoing without
+        removing that successor would leave two copies — the revived original
+        and tomorrow's — which is how a mis-tick quietly doubles a daily habit.
+        Only an untouched successor is removed: if it has been completed or
+        filed elsewhere it is now its own thing and is left alone.
+        """
         with self.db.connect() as conn:
+            conn.execute(
+                """DELETE FROM items
+                    WHERE recurs_from_id = ? AND state = ? AND ticked = 0""",
+                (item_id, str(ItemState.NEXT_ACTION)),
+            )
             conn.execute(
                 "UPDATE items SET state = ?, completed_at = NULL, updated_at = ? WHERE id = ?",
                 (str(state), _now(), item_id),
@@ -723,6 +735,90 @@ class Store:
                     WHERE id = ?""",
                 (str(ChecklistStatus.ACTIVE), now, checklist_id),
             )
+
+    def daily_items(self, *, today: date | None = None) -> dict[str, list]:
+        """Today's standing commitments: what is still open, and what is done.
+
+        Daily habits are a different kind of thing from tasks — meds, teeth,
+        sunlight — and they are swept several times a day rather than planned.
+        The question they answer is "have I done it yet", so the completed ones
+        matter as much as the outstanding ones and both are returned.
+
+        "Covers today" means an every-N-days rule, or a day set including
+        today's weekday. Weekly and monthly repeats are not daily commitments
+        and stay out.
+        """
+        today = today or date.today()
+        stamp = today.isoformat()
+
+        def covers_today(row) -> bool:
+            rule = recurrence.rule_from_row(row)
+            if rule.days:
+                return today.weekday() in {
+                    recurrence._WEEKDAY_NUMBERS[d]
+                    for d in rule.days
+                    if d in recurrence._WEEKDAY_NUMBERS
+                }
+            return rule.unit == recurrence.RepeatUnit.DAY
+
+        with self.db.connect() as conn:
+            open_rows = conn.execute(
+                """SELECT i.*, c.name AS context_name
+                     FROM items i
+                     LEFT JOIN contexts c ON c.id = i.context_id
+                    WHERE i.state = ?
+                      AND (i.repeat_unit IS NOT NULL OR i.repeat_days IS NOT NULL)
+                      AND (i.defer_until IS NULL OR i.defer_until <= ?)
+                    ORDER BY i.priority IS NULL, i.priority, i.created_at""",
+                (str(ItemState.NEXT_ACTION), stamp),
+            ).fetchall()
+            done_rows = conn.execute(
+                """SELECT i.*, c.name AS context_name
+                     FROM items i
+                     LEFT JOIN contexts c ON c.id = i.context_id
+                    WHERE i.state = ?
+                      AND (i.repeat_unit IS NOT NULL OR i.repeat_days IS NOT NULL)
+                      AND substr(i.completed_at, 1, 10) = ?
+                    ORDER BY i.completed_at""",
+                (str(ItemState.DONE), stamp),
+            ).fetchall()
+
+        return {
+            "outstanding": [r for r in open_rows if covers_today(r)],
+            "done_today": [r for r in done_rows if covers_today(r)],
+        }
+
+    def search(self, query: str, *, include_finished: bool = False) -> list[sqlite3.Row]:
+        """Find items by title or notes, across every list.
+
+        LIKE rather than FTS5: at this size it is instant, and it avoids a
+        second table that has to be kept in step with `items`. Revisit if the
+        database ever grows enough for it to matter.
+        """
+        query = query.strip()
+        if not query:
+            return []
+        # Escape LIKE wildcards so a literal % or _ searches for itself.
+        escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+
+        sql = ["""SELECT i.*, p.name AS project_name, c.name AS context_name,
+                         a.name AS area_name, a.emoji AS area_emoji,
+                         cl.name AS checklist_name
+                    FROM items i
+                    LEFT JOIN projects p   ON p.id = i.project_id
+                    LEFT JOIN contexts c   ON c.id = i.context_id
+                    LEFT JOIN areas a      ON a.id = i.area_id
+                    LEFT JOIN checklists cl ON cl.id = i.checklist_id
+                   WHERE (i.title LIKE ? ESCAPE '\\' OR i.notes LIKE ? ESCAPE '\\')"""]
+        params: list[Any] = [pattern, pattern]
+        if not include_finished:
+            sql.append("AND i.state NOT IN (?, ?)")
+            params += [str(ItemState.DONE), str(ItemState.TRASHED)]
+        sql.append("ORDER BY i.state, i.updated_at DESC")
+
+        with self.db.connect() as conn:
+            return conn.execute(" ".join(sql), params).fetchall()
 
     def count_repeating(self) -> int:
         """How many live items carry a repeat rule — for the lists index."""

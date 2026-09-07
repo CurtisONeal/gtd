@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Search — GTD{% endblock %}
+{% block content %}
+
+<h1>Search</h1>
+
+<form method="get" action="/search" class="card">
+  <label for="q">Find an item by title or notes</label>
+  <input type="search" id="q" name="q" value="{{ query }}" autofocus
+         placeholder="trash, Dan, report…">
+  <label>
+    <input type="checkbox" name="all" value="1" {% if include_finished %}checked{% endif %}>
+    Include Done and Trash
+  </label>
+  <div class="actions"><button type="submit" class="primary">Search</button></div>
+</form>
+
+{% if query %}
+<p class="sub">
+  {{ results|length }} result{{ '' if results|length == 1 else 's' }} for
+  “{{ query }}”{% if not include_finished %} <span class="hint">— Done and Trash excluded</span>{% endif %}
+</p>
+
+{% if not results %}
+  <p class="empty">Nothing matched.</p>
+{% else %}
+<div class="card">
+  {% for item in results %}
+  <div class="item">
+    <div class="item-body">
+      <div class="item-title">{{ item.title }}</div>
+      {% if item.notes %}<div class="item-notes">{{ item.notes }}</div>{% endif %}
+      <div class="meta">
+        <span>{{ state_labels.get(item.state, item.state) }}</span>
+        {% if item.checklist_name %}<span>↳ {{ item.checklist_name }}</span>{% endif %}
+        {% if item.project_name %}<span>↳ {{ item.project_name }}</span>{% endif %}
+        {% if item.context_name %}<span>{{ item.context_name }}</span>{% endif %}
+        {% if item.repeat_unit or item.repeat_days %}
+          <span class="repeats">repeats {{ repeat_label(item) }}</span>
+        {% endif %}
+        {% if item.due_date %}<span>due {{ item.due_date }}</span>{% endif %}
+      </div>
+    </div>
+    <a class="btn linkish" href="/items/{{ item.id }}/edit?back=/search?q={{ query|urlencode }}"
+       title="Edit">✎</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+
+{% endblock %}

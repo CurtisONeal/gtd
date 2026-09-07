@@ -58,10 +58,35 @@ external events, and **Blocked by task** for task dependencies such as
 item automatically returns to Next Actions. Free-text `waiting_on` notes do not
 auto-unblock; only the real dependency link does.
 
+## Today — standing daily commitments
+
+`/daily` is for the things that are not tasks: meds, teeth, meditate, sunlight.
+They are a different kind of thing from "write up that report" — swept through
+several times a day rather than planned once — so they get their own page and
+their own place in the nav.
+
+An item appears here when its repeat rule covers today: **every N days**, or a
+**day set including today's weekday**. Weekly and monthly repeats are real
+commitments but they are not daily habits, so they stay out.
+
+The page shows **Still to do** and **Done today** side by side, because the
+question a habit list answers is "have I done it yet" — hiding what you have
+already done would remove the answer. Undo on a completed one also removes the
+occurrence that completing spawned, so a mis-tick cannot quietly leave two
+copies of a daily habit.
+
+## Search
+
+`/search` matches title and notes across every list, excluding Done and Trash
+unless asked. It is a GET with the query in the URL, so a search can be
+bookmarked and the back button behaves. Results link straight to each item's
+edit page — the main reason to search is to reach a recurring item and change
+it. There is a search box at the top of `/lists`.
+
 ## Navigation
 
-The nav carries four things: **capture** (the brand link home), **Inbox**,
-**Next**, and **Lists**. Everything else — Waiting For, Someday, Reference,
+The nav carries five things: **capture** (the brand link home), **Inbox**,
+**Next**, **Today**, and **Lists**. Everything else — Waiting For, Someday, Reference,
 Books, Checklists, Technology Projects, Projects, Done, Trash — lives on
 `/lists`, grouped as actionable, reference-and-ordered, and outcomes, each with
 a live count.
