@@ -58,6 +58,21 @@ external events, and **Blocked by task** for task dependencies such as
 item automatically returns to Next Actions. Free-text `waiting_on` notes do not
 auto-unblock; only the real dependency link does.
 
+## Navigation
+
+The nav carries four things: **capture** (the brand link home), **Inbox**,
+**Next**, and **Lists**. Everything else — Waiting For, Someday, Reference,
+Books, Checklists, Technology Projects, Projects, Done, Trash — lives on
+`/lists`, grouped as actionable, reference-and-ordered, and outcomes, each with
+a live count.
+
+Inbox and Next stay in the nav deliberately. They are the two surfaces used
+daily, and burying the inbox behind a menu would work against the method: the
+inbox only stays trustworthy if it is always in front of you.
+
+`/lists` also links **Repeating**, which is `/list/next_action?repeating=1` —
+the way to find a recurring item when you need to change one.
+
 ## The clarify flow
 
 Inbox processing walks Allen's actual decision tree, one question per page:
@@ -75,6 +90,14 @@ Is it actionable?
 
 Items are processed oldest-first so nothing rots at the bottom. "Skip for now"
 sends one to the back of the queue rather than letting you cherry-pick forever.
+
+**Setting a repeat while clarifying.** Deciding that something recurs happens
+while you are processing it — "take out the trash" is a Tuesday-night job every
+week, and you know that as you file it. The defer step therefore offers a
+checkbox, *"This one repeats"*, which files the item and then hands you to its
+repeat settings, returning you to the inbox afterwards so processing continues.
+The repeat panel itself is not duplicated into the clarify flow; there is one
+place that owns it.
 
 **Two other ways in.** Capture-then-clarify is the discipline, but it isn't the
 only route: each of Next Actions, Waiting For, Someday and Reference has an

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Lists — GTD{% endblock %}
+{% block content %}
+
+<h1>Lists</h1>
+<p class="sub">Everything the system holds, in one place.</p>
+
+<h2>Actionable</h2>
+<div class="card">
+  {% for row in actionable %}
+  <div class="item">
+    <div class="item-body">
+      <div class="item-title"><a href="{{ row.href }}">{{ row.label }}</a></div>
+      <div class="meta"><span>{{ row.hint }}</span></div>
+    </div>
+    <span class="badge {{ '' if row.count else 'quiet' }}">{{ row.count }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+<h2>Reference and ordered</h2>
+<div class="card">
+  {% for row in ordered %}
+  <div class="item">
+    <div class="item-body">
+      <div class="item-title"><a href="{{ row.href }}">{{ row.label }}</a></div>
+      <div class="meta"><span>{{ row.hint }}</span></div>
+    </div>
+    <span class="badge {{ '' if row.count else 'quiet' }}">{{ row.count }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+<h2>Outcomes</h2>
+<div class="card">
+  {% for row in outcomes %}
+  <div class="item">
+    <div class="item-body">
+      <div class="item-title"><a href="{{ row.href }}">{{ row.label }}</a></div>
+      <div class="meta"><span>{{ row.hint }}</span></div>
+    </div>
+    <span class="badge quiet">{{ row.count }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+{% endblock %}

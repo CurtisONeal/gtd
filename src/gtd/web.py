@@ -307,6 +307,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         area_id: str = Form(""),
         due_date: str = Form(""),
         defer_until: str = Form(""),
+        then_repeat: str = Form(""),
     ):
         store.set_state(
             item_id,
@@ -321,6 +322,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             due_date=_str_or_none(due_date),
             defer_until=_str_or_none(defer_until),
         )
+        if then_repeat:
+            # Back to the inbox afterwards, so clarifying continues where it
+            # left off rather than dead-ending on the edit page.
+            return RedirectResponse(
+                f"/items/{item_id}/edit?back=/inbox", status_code=303
+            )
         return RedirectResponse("/inbox", status_code=303)
 
     @app.post("/inbox/{item_id}/delegate")
@@ -447,6 +454,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store.complete(item_id)
         return RedirectResponse("/books", status_code=303)
 
+    @app.get("/lists", response_class=HTMLResponse)
+    def lists_index(request: Request):
+        """One page indexing every list.
+
+        The nav had grown to thirteen entries, which is unusable on a phone and
+        buries the two things that actually get used daily — capture and the
+        inbox. Everything else lives here instead.
+        """
+        counts = store.counts_by_state()
+
+        def row(label, href, hint, count):
+            return {"label": label, "href": href, "hint": hint, "count": count}
+
+        actionable = [
+            row("Next Actions", "/list/next_action",
+                "what you can actually do now", counts.get("next_action", 0)),
+            row("Waiting For", "/list/waiting_for",
+                "delegated, or blocked by another task", counts.get("waiting_for", 0)),
+            row("Repeating", "/list/next_action?repeating=1",
+                "next actions that come back on their own", store.count_repeating()),
+            row("Projects", "/projects",
+                "outcomes needing more than one step", len(store.list_projects())),
+        ]
+        ordered = [
+            row("Someday / Maybe", "/list/someday",
+                "incubating; not a commitment yet", counts.get("someday", 0)),
+            row("Reference", "/list/reference",
+                "not actionable, worth keeping", counts.get("reference", 0)),
+            row("Books", "/books",
+                "ranked within each category", counts.get("book", 0)),
+            row("Checklists", "/checklists",
+                "sets you run, not tasks you do", len(store.list_checklists())),
+            row("Technology Projects", "/tech",
+                "a re-orderable dump list", counts.get("tech_project", 0)),
+        ]
+        outcomes = [
+            row("Done", "/list/done", "completed", counts.get("done", 0)),
+            row("Trash", "/list/trashed", "soft-deleted, recoverable",
+                counts.get("trashed", 0)),
+        ]
+        return render(request, "lists.html", actionable=actionable,
+                      ordered=ordered, outcomes=outcomes)
+
     # ── Technology projects ──────────────────────────────────────────────────
 
     @app.get("/tech", response_class=HTMLResponse)
@@ -551,6 +601,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         deferred: int = 0,
         context_id: str = "",
         area_id: str = "",
+        repeating: str = "",
     ):
         # Ordered lists are ranked and grouped; the generic list page can show
         # neither, so send each to the page that can.
@@ -567,8 +618,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ctx_id = _int_or_none(context_id)
         ar_id = _int_or_none(area_id)
 
+        only_repeating = True if repeating == "1" else None
         items = store.list_items(
-            state, include_deferred=bool(deferred), context_id=ctx_id, area_id=ar_id
+            state,
+            include_deferred=bool(deferred),
+            context_id=ctx_id,
+            area_id=ar_id,
+            repeating=only_repeating,
         )
         # How many are being withheld by the tickler, so it's visible not silent.
         hidden = 0
@@ -588,6 +644,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             areas=store.list_areas(),
             selected_context=ctx_id,
             selected_area=ar_id,
+            only_repeating=bool(only_repeating),
             blocker_candidates=store.list_dependency_candidates(),
             back=str(request.url.path),
         )

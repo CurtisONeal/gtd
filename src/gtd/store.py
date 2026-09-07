@@ -304,6 +304,7 @@ class Store:
         project_id: int | None = None,
         context_id: int | None = None,
         area_id: int | None = None,
+        repeating: bool | None = None,
     ) -> list[sqlite3.Row]:
         """Items in one state, newest-relevant-first.
 
@@ -339,6 +340,10 @@ class Store:
         if area_id is not None:
             sql.append("AND i.area_id = ?")
             params.append(area_id)
+        if repeating is not None:
+            # A rule is either an interval or a day set; either one counts.
+            clause = "(i.repeat_unit IS NOT NULL OR i.repeat_days IS NOT NULL)"
+            sql.append(f"AND {clause}" if repeating else f"AND NOT {clause}")
 
         # Priority first (nulls last), then soonest due date, then oldest.
         sql.append(
@@ -718,6 +723,16 @@ class Store:
                     WHERE id = ?""",
                 (str(ChecklistStatus.ACTIVE), now, checklist_id),
             )
+
+    def count_repeating(self) -> int:
+        """How many live items carry a repeat rule — for the lists index."""
+        with self.db.connect() as conn:
+            return conn.execute(
+                """SELECT COUNT(*) AS n FROM items
+                    WHERE state NOT IN (?, ?)
+                      AND (repeat_unit IS NOT NULL OR repeat_days IS NOT NULL)""",
+                (str(ItemState.DONE), str(ItemState.TRASHED)),
+            ).fetchone()["n"]
 
     def next_inbox_item(self) -> sqlite3.Row | None:
         """Oldest unclarified item — clarify works FIFO so nothing rots at the

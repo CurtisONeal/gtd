@@ -140,6 +140,14 @@
         </div>
       </div>
 
+      {# Recurrence is set on the edit page, but the moment you decide something
+         is a repeating commitment is *here*, while clarifying it. Rather than
+         duplicate the whole repeat panel into this flow, hand off to it. #}
+      <label>
+        <input type="checkbox" name="then_repeat" value="1">
+        This one repeats — take me to its repeat settings after filing
+      </label>
+
       <div class="actions">
         <button type="submit" class="primary">Add to next actions</button>
         <a class="btn" href="/inbox">Cancel</a>
