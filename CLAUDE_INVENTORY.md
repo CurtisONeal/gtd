@@ -90,4 +90,58 @@ exist.
 
 ---
 
+## Code review of this session's work
+
+Reviewed as a PR, by the author. Findings verified against the code, not recalled.
+
+### Strengths
+
+- **Every change is grounded in an observed failure**, and the failure is recorded
+  next to the fix. `FIXED_BUGS.md` states plainly where a fix has no test.
+- **Tests assert behaviour, not implementation.** Several were mutation-checked —
+  the code was deliberately re-broken to confirm the test fails. That caught one
+  test that was passing with its bug still present.
+- **Migrations were proven against copies of the live database** before the live
+  one was touched, at every schema bump from v3 to v7.
+- **Date arithmetic is isolated** in `recurrence.py` with no database access, so
+  month-end clamping and leap years are cheap to test exhaustively.
+- **Guards refuse rather than degrade**: a cloud backup with no recipient exits
+  non-zero instead of uploading plaintext; `restore` refuses a file that is valid
+  SQLite but not a GTD database.
+
+### Flaws — ordered by how much they would cost to hit
+
+**1. `backup.push()` has a wrong default that silently disables a safety check.**
+`source_db or snapshot` (`backup.py:199`) means a caller who omits `source_db`
+gets the *snapshot* compared against the destination instead of the database. The
+same-device guard then answers the wrong question. It usually still fires,
+because snapshots live beside the database — but "usually" is not what a guard
+against silent data loss should be. `source_db` should be required.
+
+**2. `store.daily_items()` reaches into `recurrence` internals.**
+`recurrence._WEEKDAY_NUMBERS` (`store.py:773,775`) is private and accessed across
+a module boundary. The store now breaks if recurrence renames a lookup table.
+This should be a public `covers_weekday(rule, day)` on `recurrence`.
+
+**3. `describe()` compares a day set to dictionary keys.**
+`rule.days == frozenset(_WEEKDAY_NUMBERS)` works only because `StrEnum` members
+compare equal to their strings. Display logic is coupled to an internal lookup
+table; an explicit `ALL_DAYS` constant would say what is meant.
+
+**4. The recurrence UI has no rendering test in the suite.**
+Its defaults, the seven checkboxes and the mode picker were verified by hand
+against a live server. Everything else in this session got a route test; this did
+not, and it is the most intricate form in the app.
+
+**5. Leftover scaffolding.** `test_navigation.py` has a stray `app=None`
+parameter on a test that does not use it.
+
+### What I would ask for before merging
+
+Fix (1) — it is a safety guard that does not always guard. (2) and (3) are
+tidiness with a real failure mode behind them. (4) is the honest gap: a form that
+complex deserves a test asserting what it renders.
+
+---
+
 *Signed: Claude Code, 2026-09-12. Verified against `git log --grep="Co-Authored-By: Claude"` at signing time.*
